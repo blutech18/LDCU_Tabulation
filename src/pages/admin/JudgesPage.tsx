@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FaPlus, FaEdit, FaTrash, FaCopy, FaCheck, FaUserTie } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaCopy, FaCheck, FaUserTie, FaImage, FaTimes } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import Modal from '../../components/common/Modal';
 import type { Judge } from '../../types';
@@ -12,6 +12,11 @@ const JudgesPage = () => {
     const [editingJudge, setEditingJudge] = useState<Judge | null>(null);
     const [judgeName, setJudgeName] = useState('');
     const [copiedId, setCopiedId] = useState<number | null>(null);
+
+    // Image upload states
+    const [judgeImageFile, setJudgeImageFile] = useState<File | null>(null);
+    const [judgeImagePreview, setJudgeImagePreview] = useState<string>('');
+    const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
         fetchJudges();
@@ -32,15 +37,69 @@ const JudgesPage = () => {
         return 'JUDGE' + Math.random().toString(36).substring(2, 6).toUpperCase();
     };
 
+    // Image upload handler
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!['image/jpeg', 'image/png'].includes(file.type)) {
+            alert('Please upload a JPG or PNG image');
+            return;
+        }
+
+        // Validate file size (5MB max)
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image size must be less than 5MB');
+            return;
+        }
+
+        setJudgeImageFile(file);
+        setJudgeImagePreview(URL.createObjectURL(file));
+    };
+
+    const removeImage = () => {
+        setJudgeImageFile(null);
+        setJudgeImagePreview('');
+    };
+
+    const uploadImage = async (file: File): Promise<string | null> => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `judge_${Date.now()}.${fileExt}`;
+
+        const { error } = await supabase.storage
+            .from('tabulation-participant')
+            .upload(fileName, file);
+
+        if (error) {
+            console.error('Upload error:', error);
+            return null;
+        }
+
+        const { data: urlData } = supabase.storage
+            .from('tabulation-participant')
+            .getPublicUrl(fileName);
+
+        return urlData.publicUrl;
+    };
+
     const handleAddJudge = async () => {
         if (!judgeName.trim()) return;
+        setUploading(true);
+
+        let photoUrl = null;
+        if (judgeImageFile) {
+            photoUrl = await uploadImage(judgeImageFile);
+        }
 
         const code = generateCode();
         const { error } = await supabase.from('judges').insert({
             name: judgeName,
             code,
+            photo_url: photoUrl,
         });
 
+        setUploading(false);
         if (!error) {
             fetchJudges();
             closeModal();
@@ -49,14 +108,22 @@ const JudgesPage = () => {
 
     const handleUpdateJudge = async () => {
         if (!editingJudge || !judgeName.trim()) return;
+        setUploading(true);
+
+        let photoUrl = editingJudge.photo_url || null;
+        if (judgeImageFile) {
+            photoUrl = await uploadImage(judgeImageFile);
+        }
 
         const { error } = await supabase
             .from('judges')
             .update({
                 name: judgeName,
+                photo_url: photoUrl,
             })
             .eq('id', editingJudge.id);
 
+        setUploading(false);
         if (!error) {
             fetchJudges();
             closeModal();
@@ -81,12 +148,15 @@ const JudgesPage = () => {
     const openEditModal = (judge: Judge) => {
         setEditingJudge(judge);
         setJudgeName(judge.name);
+        setJudgeImagePreview(judge.photo_url || '');
         setShowModal(true);
     };
 
     const openAddModal = () => {
         setEditingJudge(null);
         setJudgeName('');
+        setJudgeImageFile(null);
+        setJudgeImagePreview('');
         setShowModal(true);
     };
 
@@ -94,6 +164,8 @@ const JudgesPage = () => {
         setShowModal(false);
         setEditingJudge(null);
         setJudgeName('');
+        setJudgeImageFile(null);
+        setJudgeImagePreview('');
     };
 
     if (loading) {
@@ -220,6 +292,42 @@ const JudgesPage = () => {
                             autoFocus
                         />
                     </div>
+
+                    {/* Photo Upload */}
+                    <div>
+                        <label className="form-label">Photo (Optional)</label>
+                        {judgeImagePreview ? (
+                            <div className="flex justify-center py-2">
+                                <div className="relative">
+                                    <img
+                                        src={judgeImagePreview}
+                                        alt="Judge preview"
+                                        className="w-24 h-24 object-cover rounded-full border-3 border-gray-200 shadow-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={removeImage}
+                                        className="absolute top-0 right-0 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
+                                    >
+                                        <FaTimes className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-maroon/50 hover:bg-gray-50 transition-all">
+                                <FaImage className="w-6 h-6 text-gray-400 mb-1" />
+                                <span className="text-sm text-gray-500">Click to upload photo</span>
+                                <span className="text-xs text-gray-400">JPG or PNG, max 5MB</span>
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png"
+                                    onChange={handleImageChange}
+                                    className="hidden"
+                                />
+                            </label>
+                        )}
+                    </div>
+
                     {!editingJudge && (
                         <p className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
                             💡 A unique access code will be generated automatically.
@@ -232,10 +340,10 @@ const JudgesPage = () => {
                     </button>
                     <button
                         onClick={editingJudge ? handleUpdateJudge : handleAddJudge}
-                        disabled={!judgeName.trim()}
+                        disabled={!judgeName.trim() || uploading}
                         className="btn-primary flex-1"
                     >
-                        {editingJudge ? 'Update Judge' : 'Add Judge'}
+                        {uploading ? 'Uploading...' : (editingJudge ? 'Update Judge' : 'Add Judge')}
                     </button>
                 </div>
             </Modal>
