@@ -1,0 +1,423 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   LDCU Tabulation System - Global Styles
+   Color Palette: Maroon (#800000) & Gold (#FFD700)
+   ============================================ */
+
+:root {
+  /* LDCU Colors */
+  --primary-color: #800000;
+  --primary-light: #a33333;
+  --primary-dark: #5c0000;
+  --secondary-color: #FFD700;
+  --secondary-light: #ffe44d;
+  --secondary-dark: #c9a800;
+  --accent-color: #2c3e50;
+
+  /* Text Colors */
+  --text-color: #2d3748;
+  --text-secondary: #718096;
+  --light-text: #ffffff;
+
+  /* Background Colors */
+  --bg-color: #f7f8fc;
+  --card-bg: #ffffff;
+  --border-color: #e2e8f0;
+  --hover-bg: #f1f5f9;
+
+  /* Status Colors */
+  --error-color: #e53e3e;
+  --success-color: #38a169;
+  --warning-color: #d69e2e;
+  --info-color: #3182ce;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-maroon: 0 4px 14px 0 rgba(128, 0, 0, 0.39);
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Transitions */
+  --transition: all 0.2s ease;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-800;
+    font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    @apply min-h-screen flex flex-col;
+  }
+}
+
+@layer components {
+
+  /* ============================================
+     BUTTON STYLES - LDCU Theme
+     ============================================ */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5;
+    @apply text-white font-medium rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: #800000;
+  }
+
+  .btn-primary:hover {
+    background-color: #5c0000;
+  }
+
+  .btn-primary:focus {
+    --tw-ring-color: rgba(128, 0, 0, 0.5);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5;
+    @apply font-semibold rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
+    background-color: #FFD700;
+    color: #800000;
+  }
+
+  .btn-secondary:hover {
+    background-color: #c9a800;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5;
+    @apply bg-transparent font-medium rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    border: 2px solid #800000;
+    color: #800000;
+  }
+
+  .btn-outline:hover {
+    background-color: #800000;
+    color: white;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5;
+    @apply bg-transparent text-gray-600 font-medium rounded-lg;
+    @apply hover:bg-gray-100 active:bg-gray-200;
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  /* ============================================
+     CARD STYLES - LDCU Theme
+     ============================================ */
+  .card {
+    @apply bg-white rounded-xl border border-gray-200 shadow-sm;
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  .card-maroon {
+    @apply bg-white rounded-xl shadow-sm;
+    border-left: 4px solid #800000;
+  }
+
+  .card-hover {
+    @apply hover:shadow-md;
+    transform: translateY(0);
+  }
+
+  .card-hover:hover {
+    transform: translateY(-2px);
+  }
+
+  .card-header-maroon {
+    @apply text-white px-4 py-3 rounded-t-xl;
+    background-color: #800000;
+  }
+
+  /* ============================================
+     FORM STYLES - LDCU Theme
+     ============================================ */
+  .form-input {
+    @apply w-full px-4 text-gray-800 bg-white;
+    @apply border border-gray-300 rounded-lg;
+    @apply focus:outline-none focus:ring-2;
+    @apply placeholder:text-gray-400;
+    @apply transition-all duration-200;
+    height: 42px;
+  }
+
+  .form-input:focus {
+    border-color: #800000;
+    --tw-ring-color: rgba(128, 0, 0, 0.3);
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-1.5;
+  }
+
+  .form-select {
+    @apply w-full px-4 py-2.5 text-gray-800 bg-white;
+    @apply border border-gray-300 rounded-lg;
+    @apply focus:outline-none focus:ring-2;
+    @apply cursor-pointer;
+  }
+
+  .form-select:focus {
+    border-color: #800000;
+    --tw-ring-color: rgba(128, 0, 0, 0.3);
+  }
+
+  /* ============================================
+     BADGE STYLES - LDCU Theme
+     ============================================ */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-maroon {
+    background-color: rgba(128, 0, 0, 0.1);
+    color: #800000;
+  }
+
+  .badge-gold {
+    background-color: rgba(255, 215, 0, 0.2);
+    color: #7a6600;
+  }
+
+  .badge-success {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-700;
+  }
+
+  .badge-error {
+    @apply bg-red-100 text-red-700;
+  }
+
+  .badge-info {
+    @apply bg-blue-100 text-blue-700;
+  }
+
+  /* ============================================
+     TABLE STYLES - LDCU Theme
+     ============================================ */
+  .table-maroon th {
+    @apply text-white font-semibold;
+    background-color: #800000;
+  }
+
+  .table-maroon td {
+    @apply border-b border-gray-200;
+  }
+
+  .table-maroon tr:hover td {
+    background-color: rgba(128, 0, 0, 0.05);
+  }
+
+  /* ============================================
+     STAT CARD STYLES - LDCU Theme
+     ============================================ */
+  .stat-card {
+    @apply bg-white rounded-xl p-5 border border-gray-200 shadow-sm;
+    @apply flex items-center gap-4;
+    @apply transition-all duration-200;
+  }
+
+  .stat-card:hover {
+    @apply shadow-md;
+    transform: translateY(-2px);
+  }
+
+  .stat-card-icon {
+    @apply w-14 h-14 rounded-xl flex items-center justify-center text-xl;
+  }
+
+  .stat-card-icon-maroon {
+    background-color: rgba(128, 0, 0, 0.1);
+    color: #800000;
+  }
+
+  .stat-card-icon-gold {
+    background-color: rgba(255, 215, 0, 0.2);
+    color: #7a6600;
+  }
+
+  .stat-card-icon-green {
+    @apply bg-green-100 text-green-600;
+  }
+
+  .stat-card-icon-blue {
+    @apply bg-blue-100 text-blue-600;
+  }
+
+  /* ============================================
+     SIDEBAR STYLES - LDCU Theme
+     ============================================ */
+  .sidebar-maroon {
+    @apply text-white;
+    background-color: #800000;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg;
+    @apply font-medium;
+    @apply transition-all duration-200;
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .sidebar-link:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  .sidebar-link.active {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #FFD700;
+  }
+
+  /* ============================================
+     HEADER STYLES - LDCU Theme
+     ============================================ */
+  .header-maroon {
+    @apply text-white shadow-md;
+    background-color: #800000;
+  }
+
+  /* ============================================
+     MODAL STYLES - LDCU Theme
+     ============================================ */
+  .modal-overlay {
+    @apply fixed inset-0 flex items-center justify-center z-50;
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+
+  .modal-content {
+    @apply bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 overflow-hidden;
+  }
+
+  .modal-header-maroon {
+    @apply text-white px-6 py-4;
+    background-color: #800000;
+  }
+
+  /* ============================================
+     GLASSMORPHISM - Judge Panel
+     ============================================ */
+  .glass-maroon {
+    @apply backdrop-blur-lg;
+    background-color: rgba(128, 0, 0, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .glass-dark {
+    @apply backdrop-blur-lg;
+    background-color: rgba(17, 24, 39, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* ============================================
+     GRADIENT BACKGROUNDS
+     ============================================ */
+  .bg-gradient-maroon {
+    background: linear-gradient(135deg, #800000 0%, #5c0000 100%);
+  }
+
+  .bg-gradient-gold {
+    background: linear-gradient(135deg, #FFD700 0%, #c9a800 100%);
+  }
+
+  .bg-gradient-judge {
+    background: linear-gradient(135deg, #111827 0%, #5c0000 50%, #111827 100%);
+  }
+}
+
+@layer utilities {
+
+  /* Text colors */
+  .text-maroon {
+    color: #800000;
+  }
+
+  .text-maroon-light {
+    color: #a33333;
+  }
+
+  .text-maroon-dark {
+    color: #5c0000;
+  }
+
+  .text-gold {
+    color: #FFD700;
+  }
+
+  /* Background colors */
+  .bg-maroon {
+    background-color: #800000;
+  }
+
+  .bg-maroon-light {
+    background-color: #a33333;
+  }
+
+  .bg-maroon-dark {
+    background-color: #5c0000;
+  }
+
+  .bg-gold {
+    background-color: #FFD700;
+  }
+
+  .bg-gold-light {
+    background-color: #ffe44d;
+  }
+
+  .bg-gold-dark {
+    background-color: #c9a800;
+  }
+
+  /* Border colors */
+  .border-maroon {
+    border-color: #800000;
+  }
+
+  .border-gold {
+    border-color: #FFD700;
+  }
+
+  /* Ring colors */
+  .ring-maroon {
+    --tw-ring-color: #800000;
+  }
+
+  .ring-gold {
+    --tw-ring-color: #FFD700;
+  }
+
+  /* Shadow */
+  .shadow-maroon {
+    box-shadow: 0 4px 14px 0 rgba(128, 0, 0, 0.39);
+  }
+
+  .shadow-gold {
+    box-shadow: 0 4px 14px 0 rgba(255, 215, 0, 0.39);
+  }
+}
