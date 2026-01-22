@@ -1329,7 +1329,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
     const [showModal, setShowModal] = useState(false);
     const [contestantName, setContestantName] = useState('');
     const [contestantDept, setContestantDept] = useState('');
-    const [contestantGender, setContestantGender] = useState<'male' | 'female' | 'other' | ''>('');
+    const [contestantGender, setContestantGender] = useState<'male' | 'female' | ''>('');
     const [editingContestant, setEditingContestant] = useState<Contestant | null>(null);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deletingContestant, setDeletingContestant] = useState<Contestant | null>(null);
@@ -1495,7 +1495,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
         setEditingContestant(contestant);
         setContestantName(contestant.name);
         setContestantDept(contestant.department || '');
-        setContestantGender((contestant.gender as 'male' | 'female' | 'other') || '');
+        setContestantGender((contestant.gender as 'male' | 'female') || '');
         setContestantImagePreview(contestant.photo_url || '');
         setShowModal(true);
     };

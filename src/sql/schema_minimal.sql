@@ -70,7 +70,7 @@ CREATE TABLE participants (
   number INTEGER, -- Participant number
   name TEXT NOT NULL,
   department TEXT,
-  gender TEXT, -- For individual type events
+  gender TEXT CHECK (gender IS NULL OR gender IN ('male', 'female')), -- For individual type events
   photo_url TEXT,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()

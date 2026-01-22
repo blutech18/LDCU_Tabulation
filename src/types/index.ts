@@ -53,7 +53,7 @@ export interface Participant {
     number: number;
     name: string;
     department?: string;
-    gender?: string;
+    gender?: 'male' | 'female';
     photo_url?: string;
     is_active: boolean;
     created_at: string;
@@ -187,7 +187,7 @@ export interface CreateParticipantInput {
     number: number;
     name: string;
     department?: string;
-    gender?: string;
+    gender?: 'male' | 'female';
     photo_url?: string;
 }
 
