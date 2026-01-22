@@ -68,7 +68,6 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
             .select('id')
             .eq('category_id', categoryId)
             .order('display_order')
-            .limit(1)
             .single();
 
         let rankingData: any[] = [];
@@ -120,7 +119,6 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
             .select('id')
             .eq('category_id', categoryId)
             .order('display_order')
-            .limit(1)
             .single();
 
         if (!criteriaData) {
@@ -160,7 +158,6 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
             .select('id')
             .eq('category_id', categoryId)
             .order('display_order')
-            .limit(1)
             .single();
 
         if (criteriaData) {

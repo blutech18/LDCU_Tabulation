@@ -150,7 +150,6 @@ export const useScoreStore = create<ScoreState>((set, get) => ({
                     .select('id')
                     .eq('category_id', categoryId)
                     .order('display_order')
-                    .limit(1)
                     .single();
 
                 if (!criteria) throw new Error("No criteria found for category");
