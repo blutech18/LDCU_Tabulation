@@ -47,8 +47,8 @@ export function useScores({ categoryId, judgeId }: UseScoresParams) {
         return lockParticipant(participantId, categoryId, judgeId, isRanking);
     };
 
-    const handleUnlockScores = async (participantId: number, isRanking = false) => {
-        return unlockParticipant(participantId, categoryId, judgeId, isRanking);
+    const handleUnlockScores = async (participantId: number) => {
+        return unlockParticipant(participantId, categoryId, judgeId);
     };
 
     const getParticipantScore = (participantId: number, criteriaId: number) => {

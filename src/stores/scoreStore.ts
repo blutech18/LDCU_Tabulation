@@ -12,15 +12,13 @@ interface ScoreState {
 
     // Actions
     fetchScores: (categoryId: number, judgeId: number) => Promise<void>;
-    fetchRankings: (categoryId: number, judgeId: number) => Promise<void>; // Keep this for now, new code removes it but the instruction doesn't explicitly say to remove it.
     fetchParticipants: (categoryId: number) => Promise<void>;
     setScore: (participantId: number, criteriaId: number, points: number) => void;
     setRanking: (participantId: number, rank: number) => void;
     saveScores: (participantId: number, categoryId: number, judgeId: number) => Promise<boolean>;
     lockParticipant: (participantId: number, categoryId: number, judgeId: number, isRanking: boolean) => Promise<boolean>;
-    unlockParticipant: (participantId: number, categoryId: number, judgeId: number, isRanking: boolean) => Promise<void>;
-    subscribeToScores: (categoryId: number) => () => void; // Keep this for now
-    subscribeToRankings: (categoryId: number) => () => void; // Keep this for now
+    unlockParticipant: (participantId: number, categoryId: number, judgeId: number) => Promise<void>;
+    subscribeToScores: (categoryId: number) => () => void;
     reset: () => void;
 }
 
@@ -113,27 +111,7 @@ export const useScoreStore = create<ScoreState>((set, get) => ({
         }
     },
 
-    fetchRankings: async (categoryId, judgeId) => {
-        set({ loading: true });
 
-        const { data } = await supabase
-            .from('rankings')
-            .select('*')
-            .eq('category_id', categoryId)
-            .eq('judge_id', judgeId);
-
-        const rankings: Record<number, number> = {};
-        const lockedParticipants = new Set<number>();
-
-        data?.forEach((ranking: any) => {
-            rankings[ranking.participant_id] = ranking.rank_position;
-            if (ranking.status === 'submitted') {
-                lockedParticipants.add(ranking.participant_id);
-            }
-        });
-
-        set({ rankings, lockedParticipants, loading: false });
-    },
 
     setScore: (participantId, criteriaId, points) => {
         const state = get();
@@ -162,31 +140,33 @@ export const useScoreStore = create<ScoreState>((set, get) => ({
         const state = get();
         set({ loading: true });
         try {
-            // Save logic here
-            // If ranking:
             if (isRanking) {
                 const rank = state.rankings[participantId];
                 if (!rank) throw new Error("No rank assigned");
 
-                // The new simple schema has `rank` column in `scores`.
-                // We will assume there is at least one criteria for the category even if ranking?
-                // Or we need to check how backend handles ranking. 
-                // For safely, let's assume we update the 'scores' table.
+                // For ranking categories, get the first criteria to store the rank
+                const { data: criteria } = await supabase
+                    .from('criteria')
+                    .select('id')
+                    .eq('category_id', categoryId)
+                    .order('display_order')
+                    .limit(1)
+                    .single();
 
-                // Ideally, we fetch the criteria for this category first.
-                // This part of the new code is incomplete and doesn't perform an upsert for ranking.
-                // Reverting to original logic for ranking lock, but with participant names.
-                await supabase.from('rankings').upsert({
+                if (!criteria) throw new Error("No criteria found for category");
+
+                // Store rank in scores table with the first criteria
+                await supabase.from('scores').upsert({
                     judge_id: judgeId,
                     participant_id: participantId,
-                    category_id: categoryId,
-                    rank_position: state.rankings[participantId] || 1,
-                    status: 'submitted',
-                }, { onConflict: 'judge_id,participant_id,category_id' });
+                    criteria_id: criteria.id,
+                    score: 0, // Score not used for ranking
+                    rank: rank,
+                    submitted_at: new Date().toISOString(),
+                }, { onConflict: 'judge_id,participant_id,criteria_id' });
 
             } else {
                 // Scoring logic
-                // We need to save all criteria scores
                 const participantScores = state.scores[participantId] || {};
 
                 const inserts = Object.entries(participantScores).map(([criteriaId, score]) => ({
@@ -194,9 +174,7 @@ export const useScoreStore = create<ScoreState>((set, get) => ({
                     participant_id: participantId,
                     criteria_id: parseInt(criteriaId),
                     score: score,
-                    // category_id is NOT in scores table in minimal schema! It's inferred via criteria->category.
-                    // But we might need it for RLS or query convenience? 
-                    // Wait, criteria_id links to category. So we don't need category_id in scores.
+                    submitted_at: new Date().toISOString(),
                 }));
 
                 if (inserts.length === 0) return false;
@@ -220,15 +198,23 @@ export const useScoreStore = create<ScoreState>((set, get) => ({
         }
     },
 
-    unlockParticipant: async (participantId, categoryId, judgeId, isRanking) => {
-        const table = isRanking ? 'rankings' : 'scores';
+    unlockParticipant: async (participantId, categoryId, judgeId) => {
+        // Get criteria for this category to find the score records
+        const { data: criteria } = await supabase
+            .from('criteria')
+            .select('id')
+            .eq('category_id', categoryId);
 
-        await supabase
-            .from(table)
-            .update({ status: 'draft' })
-            .eq('category_id', categoryId)
-            .eq('judge_id', judgeId)
-            .eq('participant_id', participantId);
+        if (criteria && criteria.length > 0) {
+            const criteriaIds = criteria.map(c => c.id);
+
+            await supabase
+                .from('scores')
+                .update({ submitted_at: null })
+                .eq('judge_id', judgeId)
+                .eq('participant_id', participantId)
+                .in('criteria_id', criteriaIds);
+        }
 
         set((state) => {
             const newLocked = new Set(state.lockedParticipants);
@@ -256,18 +242,7 @@ export const useScoreStore = create<ScoreState>((set, get) => ({
         };
     },
 
-    subscribeToRankings: (categoryId) => {
-        const channel = supabase
-            .channel(`rankings-${categoryId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'rankings', filter: `category_id=eq.${categoryId}` }, (payload) => {
-                console.log('Ranking change:', payload);
-            })
-            .subscribe();
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    },
 
     reset: () => set({
         scores: {},

@@ -61,20 +61,34 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
             contestantsList = (allContestants || []) as Contestant[];
         }
 
-        // Fetch existing rankings
-        const { data: rankingData } = await supabase
-            .from('rankings')
-            .select('*')
+        // Fetch existing rankings from scores table
+        // First get the first criteria for this category
+        const { data: criteriaData } = await supabase
+            .from('criteria')
+            .select('id')
             .eq('category_id', categoryId)
-            .eq('judge_id', judgeId);
+            .order('display_order')
+            .limit(1)
+            .single();
+
+        let rankingData: any[] = [];
+        if (criteriaData) {
+            const { data } = await supabase
+                .from('scores')
+                .select('participant_id, rank, submitted_at')
+                .eq('criteria_id', criteriaData.id)
+                .eq('judge_id', judgeId)
+                .not('rank', 'is', null);
+            rankingData = data || [];
+        }
 
         // Apply existing rankings or assign default order
         const rankedContestants: RankedContestant[] = contestantsList?.map((contestant, index) => {
-            const existingRank = rankingData?.find((r) => r.contestant_id === contestant.id);
+            const existingRank = rankingData?.find((r) => r.participant_id === contestant.id);
             return {
                 ...contestant,
-                rank: existingRank?.rank_position || index + 1,
-                locked: existingRank?.status === 'submitted',
+                rank: existingRank?.rank || index + 1,
+                locked: !!existingRank?.submitted_at,
             };
         }) || [];
 
@@ -100,23 +114,39 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
     const handleSaveRankings = async () => {
         setSaving(true);
 
-        // Delete existing rankings
-        await supabase
-            .from('rankings')
-            .delete()
+        // Get the first criteria for this category
+        const { data: criteriaData } = await supabase
+            .from('criteria')
+            .select('id')
             .eq('category_id', categoryId)
+            .order('display_order')
+            .limit(1)
+            .single();
+
+        if (!criteriaData) {
+            console.error('No criteria found for category');
+            setSaving(false);
+            return;
+        }
+
+        // Delete existing rankings for this judge and category
+        await supabase
+            .from('scores')
+            .delete()
+            .eq('criteria_id', criteriaData.id)
             .eq('judge_id', judgeId);
 
-        // Insert new rankings
+        // Insert new rankings into scores table
         const rankings = contestants.map((contestant) => ({
             judge_id: judgeId,
-            contestant_id: contestant.id,
-            category_id: categoryId,
-            rank_position: contestant.rank,
-            status: 'submitted',
+            participant_id: contestant.id,
+            criteria_id: criteriaData.id,
+            score: 0, // Not used for ranking
+            rank: contestant.rank,
+            submitted_at: new Date().toISOString(),
         }));
 
-        await supabase.from('rankings').insert(rankings);
+        await supabase.from('scores').insert(rankings);
 
         setContestants((prev) => prev.map((c) => ({ ...c, locked: true })));
         setLocked(true);
@@ -124,11 +154,22 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
     };
 
     const handleUnlock = async () => {
-        await supabase
-            .from('rankings')
-            .update({ status: 'draft' })
+        // Get the first criteria for this category
+        const { data: criteriaData } = await supabase
+            .from('criteria')
+            .select('id')
             .eq('category_id', categoryId)
-            .eq('judge_id', judgeId);
+            .order('display_order')
+            .limit(1)
+            .single();
+
+        if (criteriaData) {
+            await supabase
+                .from('scores')
+                .update({ submitted_at: null })
+                .eq('criteria_id', criteriaData.id)
+                .eq('judge_id', judgeId);
+        }
 
         setContestants((prev) => prev.map((c) => ({ ...c, locked: false })));
         setLocked(false);
