@@ -200,7 +200,7 @@ const JudgeLanding = () => {
                                 </h2>
                                 <div className="flex items-center justify-center gap-2">
                                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${categories[0].tabular_type === 'ranking'
-                                        ? isDarkMode ? 'bg-purple-500/20 text-purple-300' : 'bg-purple-100 text-purple-700'
+                                        ? isDarkMode ? 'bg-maroon/20 text-maroon-light' : 'bg-maroon/10 text-maroon'
                                         : isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700'
                                         }`}>
                                         {categories[0].tabular_type === 'ranking' ? 'Ranking-Based' : 'Scoring-Based'}
@@ -292,7 +292,7 @@ const JudgeLanding = () => {
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${category.tabular_type === 'ranking'
-                                        ? isDarkMode ? 'bg-purple-500/20 text-purple-300' : 'bg-purple-100 text-purple-700'
+                                        ? isDarkMode ? 'bg-maroon/20 text-maroon-light' : 'bg-maroon/10 text-maroon'
                                         : isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700'
                                         }`}>
                                         {category.tabular_type === 'ranking' ? 'Ranking' : 'Scoring'}

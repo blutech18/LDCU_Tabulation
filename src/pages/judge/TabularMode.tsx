@@ -103,8 +103,8 @@ const TabularMode = () => {
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${isDarkMode ? 'bg-white/10 border border-white/20' : 'bg-gray-100 border border-gray-200'}`}>
                         {isRankingBased ? (
                             <>
-                                <FaTrophy className={`w-3.5 h-3.5 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-                                <span className={isDarkMode ? 'text-purple-300' : 'text-purple-700'}>Ranking</span>
+                                <FaTrophy className={`w-3.5 h-3.5 ${isDarkMode ? 'text-maroon' : 'text-maroon'}`} />
+                                <span className={isDarkMode ? 'text-maroon-light' : 'text-maroon'}>Ranking</span>
                             </>
                         ) : (
                             <>

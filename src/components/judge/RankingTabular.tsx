@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, Reorder } from 'framer-motion';
 import { FaGripVertical, FaLock, FaCheck, FaMedal } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
-import type { Contestant } from '../../types';
+import type { Contestant, Criteria } from '../../types';
 
 interface RankingTabularProps {
     categoryId: number;
@@ -18,6 +18,7 @@ interface RankedContestant extends Contestant {
 
 const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTabularProps) => {
     const [contestants, setContestants] = useState<RankedContestant[]>([]);
+    const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [locked, setLocked] = useState(false);
@@ -33,6 +34,14 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
             .select('event_id')
             .eq('id', categoryId)
             .single();
+
+        // Fetch criteria for this category
+        const { data: criteriaData } = await supabase
+            .from('criteria')
+            .select('*')
+            .eq('category_id', categoryId)
+            .order('display_order');
+        setCriteria((criteriaData as Criteria[]) || []);
 
         // Try to fetch contestants for this event
         // Fallback to all contestants if event_id column doesn't exist
@@ -70,14 +79,14 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
             .order('display_order')
             .limit(1);
 
-        const criteriaData = criteriaList?.[0];
+        const firstCriteria = criteriaList?.[0];
 
         let rankingData: any[] = [];
-        if (criteriaData) {
+        if (firstCriteria) {
             const { data } = await supabase
                 .from('scores')
                 .select('participant_id, rank, submitted_at')
-                .eq('criteria_id', criteriaData.id)
+                .eq('criteria_id', firstCriteria.id)
                 .eq('judge_id', judgeId)
                 .not('rank', 'is', null);
             rankingData = data || [];
@@ -207,13 +216,44 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
     return (
         <div className="space-y-6">
             {/* Instructions */}
-            <div className={`rounded-xl p-4 ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/20' : 'bg-purple-50 border border-purple-200'}`}>
-                <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-purple-700'}`}>
+            <div className={`rounded-xl p-4 ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/20' : 'bg-maroon/10 border border-maroon/30'}`}>
+                <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
                     {locked
                         ? '✅ Rankings are locked. Click unlock to make changes.'
                         : '🎯 Drag and drop to rearrange contestants by rank. Top position = 1st place.'}
                 </p>
             </div>
+
+            {/* Sub-Criteria Display */}
+            {criteria.length > 0 && (
+                <div className={`rounded-xl p-4 ${isDarkMode ? 'bg-white/5 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-sm'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Criteria</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {criteria.map((criterion) => (
+                            <div
+                                key={criterion.id}
+                                className={`p-3 rounded-lg ${isDarkMode ? 'bg-white/5 border border-white/10' : 'bg-gray-50 border border-gray-200'}`}
+                            >
+                                <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    {criterion.name}
+                                </p>
+                                {criterion.description && (
+                                    <p className={`text-xs mt-1 ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                                        {criterion.description}
+                                    </p>
+                                )}
+                                {criterion.percentage && criterion.percentage > 0 && (
+                                    <p className={`text-xs mt-1 font-medium ${isDarkMode ? 'text-gold' : 'text-maroon'}`}>
+                                        {criterion.percentage}%
+                                    </p>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Ranking List */}
             <div className={`rounded-2xl overflow-hidden shadow-lg ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200'}`}>
