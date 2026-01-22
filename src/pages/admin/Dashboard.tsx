@@ -7,9 +7,9 @@ import StatsCard from '../../components/admin/StatsCard';
 import type { Event, Category, StatsData } from '../../types';
 
 const Dashboard = () => {
-    const [stats, setStats] = useState<StatsData>({ events: 0, categories: 0, judges: 0, contestants: 0 });
+    const [stats, setStats] = useState<StatsData>({ events: 0, categories: 0, judges: 0, participants: 0 });
     const [recentEvents, setRecentEvents] = useState<Event[]>([]);
-    const [activeCategories, setActiveCategories] = useState<Category[]>([]);
+    const [recentCategories, setRecentCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -22,14 +22,14 @@ const Dashboard = () => {
                 supabase.from('events').select('*', { count: 'exact' }),
                 supabase.from('categories').select('*', { count: 'exact' }),
                 supabase.from('judges').select('*', { count: 'exact' }),
-                supabase.from('contestants').select('*', { count: 'exact' }),
+                supabase.from('participants').select('*', { count: 'exact' }),
             ]);
 
             setStats({
                 events: eventsRes.count || 0,
                 categories: categoriesRes.count || 0,
                 judges: judgesRes.count || 0,
-                contestants: contestantsRes.count || 0,
+                participants: contestantsRes.count || 0,
             });
 
             const { data: events } = await supabase
@@ -42,9 +42,9 @@ const Dashboard = () => {
             const { data: categories } = await supabase
                 .from('categories')
                 .select('*, events(name)')
-                .eq('status', 'active')
+                .order('created_at', { ascending: false })
                 .limit(5);
-            setActiveCategories((categories as Category[]) || []);
+            setRecentCategories((categories as Category[]) || []);
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         } finally {
@@ -93,8 +93,8 @@ const Dashboard = () => {
                 />
                 <StatsCard
                     icon={<FaUsers className="w-6 h-6" />}
-                    label="Contestants"
-                    value={stats.contestants}
+                    label="Participants"
+                    value={stats.participants}
                     color="warning"
                     delay={0.3}
                 />
@@ -151,10 +151,10 @@ const Dashboard = () => {
                                             </p>
                                         </div>
                                         <span
-                                            className={`badge ${event.tabular_type === 'ranking' ? 'bg-accent-100 text-accent-700' : 'bg-primary-100 text-primary-700'
+                                            className={`badge ${event.participant_type === 'group' ? 'bg-accent-100 text-accent-700' : 'bg-primary-100 text-primary-700'
                                                 }`}
                                         >
-                                            {event.tabular_type || 'scoring'}
+                                            {event.participant_type || 'individual'}
                                         </span>
                                     </li>
                                 ))}
@@ -163,7 +163,7 @@ const Dashboard = () => {
                     </div>
                 </motion.div>
 
-                {/* Active Categories */}
+                {/* Recent Categories */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -173,7 +173,7 @@ const Dashboard = () => {
                     <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                         <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                             <FaTrophy className="text-accent-500" />
-                            Active Categories
+                            Recent Categories
                         </h3>
                         <Link
                             to="/admin/events"
@@ -183,23 +183,25 @@ const Dashboard = () => {
                         </Link>
                     </div>
                     <div className="p-6">
-                        {activeCategories.length === 0 ? (
+                        {recentCategories.length === 0 ? (
                             <div className="text-center py-8">
                                 <FaTrophy className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                                <p className="text-gray-500">No active categories</p>
+                                <p className="text-gray-500">No categories found</p>
                             </div>
                         ) : (
                             <ul className="space-y-3">
-                                {activeCategories.map((category) => (
+                                {recentCategories.map((category) => (
                                     <li
                                         key={category.id}
                                         className="flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
                                     >
                                         <div>
                                             <p className="font-medium text-gray-900">{category.name}</p>
-                                            <p className="text-sm text-gray-500">{category.events?.name}</p>
+                                            <p className="text-sm text-gray-500">{(category as any).events?.name}</p>
                                         </div>
-                                        <span className="badge badge-active">Active</span>
+                                        <span className="badge bg-gray-100 text-gray-600">
+                                            {category.tabular_type}
+                                        </span>
                                     </li>
                                 ))}
                             </ul>

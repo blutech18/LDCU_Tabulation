@@ -1,125 +1,110 @@
 import { useEffect, useState } from 'react';
 import { useScoreStore } from '../stores';
 import { supabase } from '../lib/supabase';
-import type { CategoryCriteria } from '../types';
+import type { Criteria } from '../types';
 
 interface UseScoresParams {
     categoryId: number;
     judgeId: number;
-    isRanking?: boolean;
 }
 
 /**
  * Hook to manage scores/rankings with real-time updates
  */
-export function useScores({ categoryId, judgeId, isRanking = false }: UseScoresParams) {
-    const store = useScoreStore();
+export function useScores({ categoryId, judgeId }: UseScoresParams) {
     const {
         scores,
         rankings,
-        contestants,
-        lockedContestants,
+        participants,
+        lockedParticipants,
         loading,
-        saving,
-        fetchContestants,
+        fetchParticipants,
         fetchScores,
-        fetchRankings,
         setScore,
         setRanking,
-        lockContestant,
-        unlockContestant,
-        subscribeToScores,
-        subscribeToRankings,
-        reset,
-    } = store;
+        lockParticipant,
+        unlockParticipant,
+    } = useScoreStore();
 
     useEffect(() => {
-        // Fetch initial data
-        fetchContestants(categoryId);
-        if (isRanking) {
-            fetchRankings(categoryId, judgeId);
-        } else {
+        if (categoryId && judgeId) {
             fetchScores(categoryId, judgeId);
+            fetchParticipants(categoryId);
         }
+    }, [categoryId, judgeId]);
 
-        // Subscribe to real-time updates
-        const unsubscribe = isRanking
-            ? subscribeToRankings(categoryId)
-            : subscribeToScores(categoryId);
-
-        return () => {
-            unsubscribe();
-            reset();
-        };
-    }, [categoryId, judgeId, isRanking]);
-
-    const handleScoreChange = (contestantId: number, criteriaId: number, points: number) => {
-        if (lockedContestants.has(contestantId)) return;
-        setScore(contestantId, criteriaId, points);
+    const handleScoreChange = (participantId: number, criteriaId: number, points: number) => {
+        if (lockedParticipants.has(participantId)) return;
+        setScore(participantId, criteriaId, points);
     };
 
-    const handleRankingChange = (contestantId: number, rank: number) => {
-        if (lockedContestants.has(contestantId)) return;
-        setRanking(contestantId, rank);
+    const handleRankingChange = (participantId: number, rank: number) => {
+        if (lockedParticipants.has(participantId)) return;
+        setRanking(participantId, rank);
     };
 
-    const handleLock = async (contestantId: number) => {
-        return lockContestant(contestantId, categoryId, judgeId, isRanking);
+    const handleSubmitScores = async (participantId: number, isRanking = false) => {
+        return lockParticipant(participantId, categoryId, judgeId, isRanking);
     };
 
-    const handleUnlock = async (contestantId: number) => {
-        return unlockContestant(contestantId, categoryId, judgeId, isRanking);
+    const handleUnlockScores = async (participantId: number, isRanking = false) => {
+        return unlockParticipant(participantId, categoryId, judgeId, isRanking);
     };
 
-    const getContestantScore = (contestantId: number, criteriaId: number) => {
-        return scores[contestantId]?.[criteriaId] || 0;
+    const getParticipantScore = (participantId: number, criteriaId: number) => {
+        if (scores[participantId] && scores[participantId][criteriaId] !== undefined) {
+            return scores[participantId][criteriaId];
+        }
+        return 0; // Default score
     };
 
-    const getTotalScore = (contestantId: number) => {
-        const contestantScores = scores[contestantId] || {};
-        return Object.values(contestantScores).reduce((sum, p) => sum + p, 0);
+    const getParticipantRank = (participantId: number) => {
+        return rankings[participantId] || 0;
     };
 
-    const isContestantLocked = (contestantId: number) => {
-        return lockedContestants.has(contestantId);
+    const isParticipantLocked = (participantId: number) => {
+        return lockedParticipants.has(participantId);
     };
 
-    const allLocked = contestants.length > 0 && contestants.every(c => lockedContestants.has(c.id));
+    const allLocked = participants.length > 0 && participants.every(p => lockedParticipants.has(p.id));
 
     return {
-        contestants,
         scores,
         rankings,
+        participants,
         loading,
-        saving,
+        allLocked,
         handleScoreChange,
         handleRankingChange,
-        handleLock,
-        handleUnlock,
-        getContestantScore,
-        getTotalScore,
-        isContestantLocked,
-        allLocked,
+        handleSubmitScores,
+        handleUnlockScores,
+        getParticipantScore,
+        getParticipantRank,
+        isParticipantLocked,
+        manualRefresh: () => {
+            fetchScores(categoryId, judgeId);
+            fetchParticipants(categoryId);
+        }
     };
-}
+};
 
 /**
  * Hook to fetch criteria for a category
  */
 export function useCriteria(categoryId: number) {
-    const [criteria, setCriteria] = useState<CategoryCriteria[]>([]);
+    const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchCriteria = async () => {
             const { data } = await supabase
-                .from('category_criteria')
+                .from('criteria')
                 .select('*')
                 .eq('category_id', categoryId)
-                .eq('is_active', true)
+                // .eq('is_active', true) // Removed is_active
                 .order('display_order');
 
-            setCriteria((data as CategoryCriteria[]) || []);
+            setCriteria((data as unknown as Criteria[]) || []);
             setLoading(false);
         };
 

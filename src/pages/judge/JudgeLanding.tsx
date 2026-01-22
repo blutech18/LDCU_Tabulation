@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { FaArrowRight, FaCalendarAlt } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Judge, Category, Event } from '../../types';
@@ -59,7 +59,7 @@ const JudgeLanding = () => {
                         id,
                         name,
                         tabular_type,
-                        status,
+
                         event_id,
                         events (
                             id,
@@ -103,9 +103,7 @@ const JudgeLanding = () => {
         }, 300);
     };
 
-    const handleSkipWelcome = () => {
-        setShowWelcome(false);
-    };
+
 
     // Loading state
     if (loading) {
@@ -165,7 +163,7 @@ const JudgeLanding = () => {
                     >
                         <div className="flex items-center justify-center gap-4 mb-2">
                             <h1 className={`text-4xl md:text-5xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
-                                {judge?.title ? `${judge.title} ` : ''}{judge?.name}
+                                {judge?.name}
                             </h1>
                             <motion.span
                                 animate={{ rotate: [0, 14, -8, 14, -4, 10, 0] }}
@@ -175,9 +173,6 @@ const JudgeLanding = () => {
                                 👋
                             </motion.span>
                         </div>
-                        {judge?.affiliation && (
-                            <p className={isDarkMode ? 'text-white/40 text-sm' : 'text-gray-500 text-sm'}>{judge.affiliation}</p>
-                        )}
                     </motion.div>
 
                     {/* Welcome message */}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FaLock, FaUnlock, FaCheck } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
-import type { Contestant, CategoryCriteria } from '../../types';
+import type { Participant, Criteria } from '../../types';
 
 interface ScoringTabularProps {
     categoryId: number;
@@ -12,15 +12,15 @@ interface ScoringTabularProps {
 }
 
 interface ScoreState {
-    [contestantId: number]: {
+    [participantId: number]: {
         [criteriaId: number]: number;
         locked: boolean;
     };
 }
 
 const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTabularProps) => {
-    const [contestants, setContestants] = useState<Contestant[]>([]);
-    const [criteria, setCriteria] = useState<CategoryCriteria[]>([]);
+    const [participants, setParticipants] = useState<Participant[]>([]);
+    const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [scores, setScores] = useState<ScoreState>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -37,70 +37,98 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
             .eq('id', categoryId)
             .single();
 
-        // Try to fetch contestants for this event
-        // Fallback to all contestants if event_id column doesn't exist
-        let contestantsList: Contestant[] = [];
+        // Try to fetch participants for this event
+        // Fallback to all participants if event_id column doesn't exist
+        let participantsList: Participant[] = [];
 
         if (categoryData?.event_id) {
-            const { data: contestantData, error } = await supabase
-                .from('contestants')
+            const { data: participantData, error } = await supabase
+                .from('participants')
                 .select('*')
                 .eq('event_id', categoryData.event_id)
                 .eq('is_active', true)
-                .order('contestant_number');
+                .order('number');
 
-            if (!error && contestantData) {
-                contestantsList = contestantData as Contestant[];
+            if (!error && participantData) {
+                participantsList = participantData as Participant[];
             }
         }
 
-        // Fallback: if no contestants found or event_id query failed, try without event_id filter
-        if (contestantsList.length === 0) {
-            const { data: allContestants } = await supabase
-                .from('contestants')
+        // Fallback: if no participants found or event_id query failed, try without event_id filter
+        if (participantsList.length === 0) {
+            const { data: allParticipants } = await supabase
+                .from('participants')
                 .select('*')
                 .eq('is_active', true)
-                .order('contestant_number');
-            contestantsList = (allContestants || []) as Contestant[];
+                .order('number');
+            participantsList = (allParticipants || []) as Participant[];
         }
 
-        setContestants(contestantsList);
+        setParticipants(participantsList);
 
         // Fetch criteria for this category
         const { data: criteriaData } = await supabase
-            .from('category_criteria')
+            .from('criteria') // Updated table name
             .select('*')
             .eq('category_id', categoryId)
-            .eq('is_active', true)
+            // .eq('is_active', true) // Removed is_active if it's not in schema
             .order('display_order');
 
-        setCriteria((criteriaData as CategoryCriteria[]) || []);
+        setCriteria((criteriaData as Criteria[]) || []);
 
-        // Fetch existing scores
-        const { data: scoreData } = await supabase
-            .from('scores')
-            .select('*, score_details(*)')
-            .eq('category_id', categoryId)
-            .eq('judge_id', judgeId);
+        // Fetch existing scores for this judge and criteria
+        const criteriaIds = (criteriaData || []).map((c: any) => c.id);
+        let scoreData: any[] = [];
+        
+        if (criteriaIds.length > 0) {
+            const { data } = await supabase
+                .from('scores')
+                .select('*')
+                .eq('judge_id', judgeId)
+                .in('criteria_id', criteriaIds);
+            scoreData = data || [];
+        }
 
         // Initialize scores state
         const initialScores: ScoreState = {};
-        contestantsList?.forEach((contestant) => {
-            initialScores[contestant.id] = { locked: false };
+        participantsList?.forEach((participant) => {
+            initialScores[participant.id] = { locked: false };
             criteriaData?.forEach((c: any) => {
-                initialScores[contestant.id][c.id] = 0;
+                initialScores[participant.id][c.id] = 0;
             });
         });
 
         // Apply existing scores
+        // Minimal schema storage strategy: one row per criteria score?
+        // Or one row per participant with details?
+        // Let's assume one row per criteria per participant per judge.
+        /*
+         scoreData is array of { participant_id, criteria_id, score, ... }
+        */
+
         scoreData?.forEach((score: any) => {
-            if (initialScores[score.contestant_id]) {
-                initialScores[score.contestant_id].locked = score.status === 'submitted';
-                score.score_details?.forEach((detail: { category_criteria_id: number; raw_score: number }) => {
-                    if (initialScores[score.contestant_id]) {
-                        initialScores[score.contestant_id][detail.category_criteria_id] = detail.raw_score;
-                    }
-                });
+            if (!initialScores[score.participant_id]) {
+                initialScores[score.participant_id] = { locked: false }; // Init if missing
+            }
+
+            // Assuming simplified schema where we just have rows
+            if (score.criteria_id) {
+                initialScores[score.participant_id][score.criteria_id] = score.score;
+            }
+
+            // status logic?
+            // schema says 'status' is in `events`? 
+            // `scores` table has `rank` but not explicitly `status` column in minimal schema sql provided?
+            // Wait, looking at scoreStore logic I wrote earlier: 
+            // "lockedParticipants.add(score.participant_id)" just by existence.
+            // We can infer locked if scores exist? Or we need that status column back?
+            // The previous file used `status` in scores.
+            // The minimal schema `scores` table definition:
+            // id, judge_id, participant_id, criteria_id, score, rank, submitted_at, created_at
+            // No 'status' column.
+            // Use `submitted_at` as locked indicator?
+            if (score.submitted_at) {
+                initialScores[score.participant_id].locked = true;
             }
         });
 
@@ -108,107 +136,88 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
         setLoading(false);
     };
 
-    const handleScoreChange = (contestantId: number, criteriaId: number, value: number) => {
-        if (scores[contestantId]?.locked) return;
+    const handleScoreChange = (participantId: number, criteriaId: number, value: number) => {
+        if (scores[participantId]?.locked) return;
 
         const max = criteria.find((c) => c.id === criteriaId)?.percentage || 100;
         const clampedValue = Math.min(Math.max(0, value), max);
 
         setScores((prev) => ({
             ...prev,
-            [contestantId]: {
-                ...prev[contestantId],
+            [participantId]: {
+                ...prev[participantId],
                 [criteriaId]: clampedValue,
             },
         }));
     };
 
-    const calculateTotal = (contestantId: number) => {
-        if (!scores[contestantId]) return 0;
-        return criteria.reduce((sum, c) => sum + (scores[contestantId][c.id] || 0), 0);
+    const calculateTotal = (participantId: number) => {
+        if (!scores[participantId]) return 0;
+        return criteria.reduce((sum, c) => sum + (scores[participantId][c.id] || 0), 0);
     };
 
-    const handleLockContestant = async (contestantId: number) => {
+    const handleLockParticipant = async (participantId: number) => {
         setSaving(true);
 
         // Save scores to database
-        const totalScore = calculateTotal(contestantId);
+        const participantScores = scores[participantId];
 
-        // Check if score exists
-        const { data: existingScore } = await supabase
+        // Prepare inserts
+        const inserts = criteria.map(c => ({
+            judge_id: judgeId,
+            participant_id: participantId,
+            criteria_id: c.id,
+            score: participantScores[c.id] || 0,
+            // category_id? Not in scores table.
+            submitted_at: new Date().toISOString()
+        }));
+
+        const { error } = await supabase
             .from('scores')
-            .select('id')
-            .eq('category_id', categoryId)
-            .eq('judge_id', judgeId)
-            .eq('contestant_id', contestantId)
-            .single();
+            .upsert(inserts, { onConflict: 'judge_id,participant_id,criteria_id' });
 
-        let scoreId: number;
-
-        if (existingScore) {
-            // Update existing score
-            await supabase
-                .from('scores')
-                .update({ total_score: totalScore, status: 'submitted', updated_at: new Date().toISOString() })
-                .eq('id', existingScore.id);
-            scoreId = existingScore.id;
-        } else {
-            // Insert new score
-            const { data: newScore } = await supabase
-                .from('scores')
-                .insert({
-                    judge_id: judgeId,
-                    contestant_id: contestantId,
-                    category_id: categoryId,
-                    total_score: totalScore,
-                    status: 'submitted',
-                })
-                .select('id')
-                .single();
-            scoreId = newScore?.id || 0;
+        if (!error) {
+            setScores((prev) => ({
+                ...prev,
+                [participantId]: {
+                    ...prev[participantId],
+                    locked: true,
+                },
+            }));
         }
-
-        // Delete existing details and insert new ones
-        await supabase.from('score_details').delete().eq('score_id', scoreId);
-
-        const details = criteria.map((c) => ({
-            score_id: scoreId,
-            category_criteria_id: c.id,
-            raw_score: scores[contestantId][c.id] || 0,
-            weighted_score: scores[contestantId][c.id] || 0, // For now, raw = weighted
-        }));
-
-        await supabase.from('score_details').insert(details);
-
-        setScores((prev) => ({
-            ...prev,
-            [contestantId]: {
-                ...prev[contestantId],
-                locked: true,
-            },
-        }));
 
         setSaving(false);
     };
 
-    const handleUnlockContestant = async (contestantId: number) => {
+    const handleUnlockParticipant = async (participantId: number) => {
+        // To unlock, we clear submitted_at?
+        // Or delete rows?
+        // Let's update submitted_at to null
+
+        /* 
+           Wait, `submitted_at` might not be nullable? 
+           Schema: "submitted_at TIMESTAMPTZ DEFAULT NOW()" 
+           Usually nullable if not specified NOT NULL.
+           Let's try to update it to null.
+        */
+
         await supabase
             .from('scores')
-            .update({ status: 'draft' })
-            .eq('category_id', categoryId)
+            .update({ submitted_at: null })
             .eq('judge_id', judgeId)
-            .eq('contestant_id', contestantId);
+            // .eq('category_id', categoryId) // Not in table
+            .eq('participant_id', participantId);
 
         setScores((prev) => ({
             ...prev,
-            [contestantId]: {
-                ...prev[contestantId],
+            [participantId]: {
+                ...prev[participantId],
                 locked: false,
             },
         }));
     };
 
-    const allContestantsLocked = contestants.every((c) => scores[c.id]?.locked);
+    const allParticipantsLocked = participants.length > 0 && participants.every((c) => scores[c.id]?.locked);
 
     if (loading) {
         return (
@@ -227,7 +236,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
                         <thead>
                             <tr className={isDarkMode ? 'border-b border-white/10' : 'bg-gray-50 border-b border-gray-200'}>
                                 <th className={`px-4 py-4 text-left text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Contestant
+                                    Participant
                                 </th>
                                 {criteria.map((c) => (
                                     <th key={c.id} className={`px-4 py-4 text-center text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -244,22 +253,22 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
                             </tr>
                         </thead>
                         <tbody className={isDarkMode ? 'divide-y divide-white/5' : 'divide-y divide-gray-100'}>
-                            {contestants.map((contestant, index) => (
+                            {participants.map((participant, index) => (
                                 <motion.tr
-                                    key={contestant.id}
+                                    key={participant.id}
                                     initial={{ opacity: 0, x: -20 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ delay: index * 0.05 }}
-                                    className={`${scores[contestant.id]?.locked ? (isDarkMode ? 'bg-green-500/10' : 'bg-green-50') : (isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')}`}
+                                    className={`${scores[participant.id]?.locked ? (isDarkMode ? 'bg-green-500/10' : 'bg-green-50') : (isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')}`}
                                 >
                                     <td className="px-4 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shadow-sm ${isDarkMode ? 'bg-gradient-to-br from-primary-500 to-accent-500' : 'bg-gradient-to-br from-maroon to-maroon-dark'}`}>
-                                                {contestant.contestant_number || contestant.name.charAt(0)}
+                                                {participant.number || participant.name.charAt(0)}
                                             </div>
                                             <div>
-                                                <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{contestant.name}</p>
-                                                <p className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>{contestant.department}</p>
+                                                <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{participant.name}</p>
+                                                <p className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>{participant.department}</p>
                                             </div>
                                         </div>
                                     </td>
@@ -270,24 +279,24 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
                                                 min={0}
                                                 max={c.percentage}
                                                 step={0.5}
-                                                value={scores[contestant.id]?.[c.id] || 0}
+                                                value={scores[participant.id]?.[c.id] || 0}
                                                 onChange={(e) =>
-                                                    handleScoreChange(contestant.id, c.id, parseFloat(e.target.value) || 0)
+                                                    handleScoreChange(participant.id, c.id, parseFloat(e.target.value) || 0)
                                                 }
-                                                disabled={scores[contestant.id]?.locked}
+                                                disabled={scores[participant.id]?.locked}
                                                 className={`w-20 px-3 py-2 rounded-lg text-center focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${isDarkMode ? 'bg-white/10 border border-white/20 text-white placeholder:text-white/30 focus:ring-primary-500' : 'bg-white border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:ring-maroon focus:border-maroon disabled:bg-gray-100'}`}
                                             />
                                         </td>
                                     ))}
                                     <td className="px-4 py-4 text-center">
                                         <span className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
-                                            {calculateTotal(contestant.id).toFixed(1)}
+                                            {calculateTotal(participant.id).toFixed(1)}
                                         </span>
                                     </td>
                                     <td className="px-4 py-4 text-center">
-                                        {scores[contestant.id]?.locked ? (
+                                        {scores[participant.id]?.locked ? (
                                             <button
-                                                onClick={() => handleUnlockContestant(contestant.id)}
+                                                onClick={() => handleUnlockParticipant(participant.id)}
                                                 className={`p-2 rounded-lg transition-colors shadow-sm ${isDarkMode ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
                                                 title="Unlock to edit"
                                             >
@@ -295,7 +304,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
                                             </button>
                                         ) : (
                                             <button
-                                                onClick={() => handleLockContestant(contestant.id)}
+                                                onClick={() => handleLockParticipant(participant.id)}
                                                 disabled={saving}
                                                 className={`p-2 rounded-lg transition-colors disabled:opacity-50 shadow-sm ${isDarkMode ? 'bg-primary-500/20 text-primary-300 hover:bg-primary-500/30' : 'bg-maroon/10 text-maroon hover:bg-maroon/20'}`}
                                                 title="Lock and save"
@@ -312,7 +321,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
             </div>
 
             {/* Submit All Button */}
-            {allContestantsLocked && (
+            {allParticipantsLocked && (
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}

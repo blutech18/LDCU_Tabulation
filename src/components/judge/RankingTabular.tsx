@@ -40,11 +40,11 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
 
         if (categoryData?.event_id) {
             const { data: contestantData, error } = await supabase
-                .from('contestants')
+                .from('participants')
                 .select('*')
                 .eq('event_id', categoryData.event_id)
                 .eq('is_active', true)
-                .order('contestant_number');
+                .order('number');
 
             if (!error && contestantData) {
                 contestantsList = contestantData as Contestant[];
@@ -54,10 +54,10 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
         // Fallback: if no contestants found or event_id query failed, try without event_id filter
         if (contestantsList.length === 0) {
             const { data: allContestants } = await supabase
-                .from('contestants')
+                .from('participants')
                 .select('*')
                 .eq('is_active', true)
-                .order('contestant_number');
+                .order('number');
             contestantsList = (allContestants || []) as Contestant[];
         }
 

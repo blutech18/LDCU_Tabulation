@@ -1147,10 +1147,7 @@ const TabularTab = ({ event }: { event: Event }) => {
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
                                     </>
                                 ) : (
-                                    <div className={`w-full h-full ${category.tabular_type === 'ranking'
-                                        ? 'bg-gradient-to-br from-purple-500 to-purple-700'
-                                        : 'bg-gradient-to-br from-blue-500 to-blue-700'
-                                        }`}>
+                                    <div className="w-full h-full bg-gradient-to-br from-maroon to-maroon-dark">
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
                                     </div>
                                 )}
@@ -1159,10 +1156,7 @@ const TabularTab = ({ event }: { event: Event }) => {
                                 <div className="absolute inset-0 p-4 flex flex-col justify-between">
                                     {/* Top - Type Badge and Action Buttons */}
                                     <div className="flex justify-between items-start">
-                                        <span className={`px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${category.tabular_type === 'ranking'
-                                            ? 'bg-purple-500/90 text-white'
-                                            : 'bg-blue-500/90 text-white'
-                                            }`}>
+                                        <span className="px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm bg-maroon/90 text-white">
                                             {category.tabular_type === 'ranking' ? 'Ranking' : 'Scoring'}
                                         </span>
 
@@ -1376,7 +1370,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
         const fileName = `${event.id}_${Date.now()}.${fileExt}`;
 
         const { error } = await supabase.storage
-            .from('tabulation-contestant')
+            .from('tabulation-participant')
             .upload(fileName, file);
 
         if (error) {
@@ -1385,7 +1379,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
         }
 
         const { data: urlData } = supabase.storage
-            .from('tabulation-contestant')
+            .from('tabulation-participant')
             .getPublicUrl(fileName);
 
         return urlData.publicUrl;
@@ -1405,10 +1399,10 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
 
     const fetchContestants = async () => {
         const { data } = await supabase
-            .from('contestants')
+            .from('participants')
             .select('*')
             .eq('event_id', event.id)
-            .order('contestant_number');
+            .order('number');
         setContestants((data as Contestant[]) || []);
         setLoading(false);
     };
@@ -1425,7 +1419,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
         const insertData: any = {
             name: contestantName,
             department: contestantDept,
-            contestant_number: contestants.length + 1,
+            number: contestants.length + 1,
             event_id: event.id,
         };
 
@@ -1439,7 +1433,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
             insertData.photo_url = photoUrl;
         }
 
-        const { error } = await supabase.from('contestants').insert(insertData);
+        const { error } = await supabase.from('participants').insert(insertData);
 
         setUploading(false);
         if (!error) {
@@ -1471,7 +1465,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
         updateData.photo_url = photoUrl;
 
         const { error } = await supabase
-            .from('contestants')
+            .from('participants')
             .update(updateData)
             .eq('id', editingContestant.id);
 
@@ -1486,7 +1480,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
         if (!deletingContestant) return;
 
         const { error } = await supabase
-            .from('contestants')
+            .from('participants')
             .delete()
             .eq('id', deletingContestant.id);
 
@@ -1500,8 +1494,8 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
     const openEditModal = (contestant: Contestant) => {
         setEditingContestant(contestant);
         setContestantName(contestant.name);
-        setContestantDept(contestant.department);
-        setContestantGender(contestant.gender || '');
+        setContestantDept(contestant.department || '');
+        setContestantGender((contestant.gender as 'male' | 'female' | 'other') || '');
         setContestantImagePreview(contestant.photo_url || '');
         setShowModal(true);
     };
@@ -1568,7 +1562,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
                                         />
                                     ) : (
                                         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-maroon to-maroon-dark flex items-center justify-center text-white font-bold text-lg shadow-sm">
-                                            {contestant.contestant_number || contestant.name.charAt(0)}
+                                            {contestant.number || contestant.name.charAt(0)}
                                         </div>
                                     )}
                                 </div>
@@ -1682,25 +1676,27 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
                     <div>
                         <label className="form-label">Photo (Optional)</label>
                         {contestantImagePreview ? (
-                            <div className="relative inline-block">
-                                <img
-                                    src={contestantImagePreview}
-                                    alt="Participant preview"
-                                    className="w-24 h-24 object-cover rounded-full border-2 border-gray-200"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={removeImage}
-                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
-                                >
-                                    <FaTimes className="w-3 h-3" />
-                                </button>
+                            <div className="flex justify-center py-2">
+                                <div className="relative">
+                                    <img
+                                        src={contestantImagePreview}
+                                        alt="Participant preview"
+                                        className="w-24 h-24 object-cover rounded-full border-3 border-gray-200 shadow-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={removeImage}
+                                        className="absolute top-0 right-0 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
+                                    >
+                                        <FaTimes className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                             </div>
                         ) : (
-                            <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-maroon/50 hover:bg-gray-50 transition-all">
-                                <FaImage className="w-8 h-8 text-gray-400 mb-2" />
+                            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-maroon/50 hover:bg-gray-50 transition-all">
+                                <FaImage className="w-6 h-6 text-gray-400 mb-1" />
                                 <span className="text-sm text-gray-500">Click to upload photo</span>
-                                <span className="text-xs text-gray-400 mt-1">JPG or PNG, max 5MB</span>
+                                <span className="text-xs text-gray-400">JPG or PNG, max 5MB</span>
                                 <input
                                     type="file"
                                     accept="image/jpeg,image/png"
@@ -1804,10 +1800,9 @@ const CriteriaTab = ({ event }: { event: Event }) => {
         setLoading(true);
         // Fetch criteria directly linked to the category (these act as the main scoring items)
         const { data } = await supabase
-            .from('category_criteria')
+            .from('criteria')
             .select('*')
             .eq('category_id', categoryId)
-            .eq('is_active', true)
             .order('display_order');
         setSubCriteria(data || []);
         setLoading(false);
@@ -1860,11 +1855,11 @@ const CriteriaTab = ({ event }: { event: Event }) => {
 
         if (editingSubCriteria) {
             await supabase
-                .from('category_criteria')
+                .from('criteria')
                 .update(subData)
                 .eq('id', editingSubCriteria.id);
         } else {
-            await supabase.from('category_criteria').insert(subData);
+            await supabase.from('criteria').insert(subData);
         }
 
         fetchSubCriteria(selectedCategory.id);
@@ -1881,8 +1876,8 @@ const CriteriaTab = ({ event }: { event: Event }) => {
         if (!deletingItem) return;
 
         await supabase
-            .from('category_criteria')
-            .update({ is_active: false })
+            .from('criteria')
+            .delete()
             .eq('id', deletingItem.id);
 
         if (selectedCategory) fetchSubCriteria(selectedCategory.id);
@@ -2179,12 +2174,16 @@ const JudgesTab = ({ event }: { event: Event }) => {
     const [showJudgeModal, setShowJudgeModal] = useState(false);
     const [editingJudge, setEditingJudge] = useState<Judge | null>(null);
     const [judgeName, setJudgeName] = useState('');
-    const [judgeTitle, setJudgeTitle] = useState('');
-    const [judgeAffiliation, setJudgeAffiliation] = useState('');
+    
+    // Judge image upload states
+    const [judgeImageFile, setJudgeImageFile] = useState<File | null>(null);
+    const [judgeImagePreview, setJudgeImagePreview] = useState<string>('');
+    const [uploadingJudge, setUploadingJudge] = useState(false);
 
     // Assignment modal
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+    const [pendingAssignments, setPendingAssignments] = useState<number[]>([]);
 
     // Delete modal
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -2205,33 +2204,14 @@ const JudgesTab = ({ event }: { event: Event }) => {
             .order('display_order');
         setCategories((categoriesData as Category[]) || []);
 
-        // Fetch judges assigned to categories of this event
-        if (categoriesData && categoriesData.length > 0) {
-            const categoryIds = categoriesData.map((c: Category) => c.id);
-
-            // Get judge IDs that are assigned to this event's categories
-            const { data: assignmentsData } = await supabase
-                .from('judge_assignments')
-                .select('judge_id')
-                .in('category_id', categoryIds)
-                .eq('is_active', true);
-
-            const assignedJudgeIds = [...new Set((assignmentsData || []).map((a: any) => a.judge_id))];
-
-            if (assignedJudgeIds.length > 0) {
-                const { data: judgesData } = await supabase
-                    .from('judges')
-                    .select('*')
-                    .in('id', assignedJudgeIds)
-                    .eq('is_active', true)
-                    .order('name');
-                setJudges((judgesData as Judge[]) || []);
-            } else {
-                setJudges([]);
-            }
-        } else {
-            setJudges([]);
-        }
+        // Fetch all judges for this event (not just assigned ones)
+        const { data: judgesData } = await supabase
+            .from('judges')
+            .select('*')
+            .eq('event_id', event.id)
+            .eq('is_active', true)
+            .order('name');
+        setJudges((judgesData as Judge[]) || []);
 
         // Fetch judge assignments for all categories of this event
         if (categoriesData && categoriesData.length > 0) {
@@ -2255,7 +2235,9 @@ const JudgesTab = ({ event }: { event: Event }) => {
     };
 
     const generateCode = () => {
-        return 'JUDGE' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const timestamp = Date.now().toString(36).slice(-4).toUpperCase();
+        const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+        return `JUDGE${timestamp}${random}`;
     };
 
     const handleCopyCode = (judge: Judge) => {
@@ -2264,53 +2246,126 @@ const JudgesTab = ({ event }: { event: Event }) => {
         setTimeout(() => setCopiedId(null), 2000);
     };
 
+    // Judge image upload handler
+    const handleJudgeImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!['image/jpeg', 'image/png'].includes(file.type)) {
+            alert('Please upload a JPG or PNG image');
+            return;
+        }
+
+        // Validate file size (5MB max)
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image size must be less than 5MB');
+            return;
+        }
+
+        setJudgeImageFile(file);
+        setJudgeImagePreview(URL.createObjectURL(file));
+    };
+
+    const removeJudgeImage = () => {
+        setJudgeImageFile(null);
+        setJudgeImagePreview('');
+    };
+
+    const uploadJudgeImage = async (file: File): Promise<string | null> => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `judge_${event.id}_${Date.now()}.${fileExt}`;
+
+        const { error } = await supabase.storage
+            .from('tabulation-participant')
+            .upload(fileName, file);
+
+        if (error) {
+            console.error('Upload error:', error);
+            return null;
+        }
+
+        const { data: urlData } = supabase.storage
+            .from('tabulation-participant')
+            .getPublicUrl(fileName);
+
+        return urlData.publicUrl;
+    };
+
     // Judge CRUD
     const openAddJudgeModal = () => {
         setEditingJudge(null);
         setJudgeName('');
-        setJudgeTitle('');
-        setJudgeAffiliation('');
+        setJudgeImageFile(null);
+        setJudgeImagePreview('');
         setShowJudgeModal(true);
     };
 
     const openEditJudgeModal = (judge: Judge) => {
         setEditingJudge(judge);
         setJudgeName(judge.name);
-        setJudgeTitle(judge.title || '');
-        setJudgeAffiliation(judge.affiliation || '');
+        setJudgeImagePreview(judge.photo_url || '');
         setShowJudgeModal(true);
     };
 
     const closeJudgeModal = () => {
         setShowJudgeModal(false);
         setEditingJudge(null);
+        setJudgeName('');
+        setJudgeImageFile(null);
+        setJudgeImagePreview('');
     };
 
     const handleSaveJudge = async () => {
         if (!judgeName.trim()) return;
+        setUploadingJudge(true);
 
-        if (editingJudge) {
-            await supabase
-                .from('judges')
-                .update({
+        try {
+            let photoUrl = editingJudge?.photo_url || null;
+            if (judgeImageFile) {
+                photoUrl = await uploadJudgeImage(judgeImageFile);
+            }
+
+            if (editingJudge) {
+                const { error } = await supabase
+                    .from('judges')
+                    .update({
+                        name: judgeName.trim(),
+                        photo_url: photoUrl,
+                    })
+                    .eq('id', editingJudge.id);
+                
+                if (error) {
+                    console.error('Error updating judge:', error);
+                    alert('Failed to update judge: ' + error.message);
+                    setUploadingJudge(false);
+                    return;
+                }
+            } else {
+                const code = generateCode();
+                const { error } = await supabase.from('judges').insert({
+                    event_id: event.id,
                     name: judgeName.trim(),
-                    title: judgeTitle.trim() || null,
-                    affiliation: judgeAffiliation.trim() || null,
-                })
-                .eq('id', editingJudge.id);
-        } else {
-            const code = generateCode();
-            // Create judge without event_id (database column may not exist)
-            await supabase.from('judges').insert({
-                name: judgeName.trim(),
-                title: judgeTitle.trim() || null,
-                affiliation: judgeAffiliation.trim() || null,
-                code,
-            });
-        }
+                    code,
+                    photo_url: photoUrl,
+                });
+                
+                if (error) {
+                    console.error('Error creating judge:', error);
+                    alert('Failed to create judge: ' + error.message);
+                    setUploadingJudge(false);
+                    return;
+                }
+            }
 
-        fetchData();
-        closeJudgeModal();
+            setUploadingJudge(false);
+            fetchData();
+            closeJudgeModal();
+        } catch (err) {
+            console.error('Unexpected error:', err);
+            alert('An unexpected error occurred');
+            setUploadingJudge(false);
+        }
     };
 
     const handleDeleteJudge = async () => {
@@ -2329,28 +2384,52 @@ const JudgesTab = ({ event }: { event: Event }) => {
     // Assignment handling
     const openAssignModal = (category: Category) => {
         setSelectedCategory(category);
+        // Initialize pending assignments with current assignments
+        const currentAssignments = assignedJudges[category.id] || [];
+        setPendingAssignments([...currentAssignments]);
         setShowAssignModal(true);
     };
 
-    const toggleJudgeAssignment = async (judgeId: number, categoryId: number) => {
-        const isCurrentlyAssigned = assignedJudges[categoryId]?.includes(judgeId);
+    const toggleJudgeAssignment = (judgeId: number) => {
+        setPendingAssignments(prev => {
+            if (prev.includes(judgeId)) {
+                return prev.filter(id => id !== judgeId);
+            } else {
+                return [...prev, judgeId];
+            }
+        });
+    };
 
-        if (isCurrentlyAssigned) {
-            // Remove assignment
+    const saveJudgeAssignments = async () => {
+        if (!selectedCategory) return;
+
+        const categoryId = selectedCategory.id;
+        const currentAssignments = assignedJudges[categoryId] || [];
+
+        // Find judges to add and remove
+        const toAdd = pendingAssignments.filter(id => !currentAssignments.includes(id));
+        const toRemove = currentAssignments.filter(id => !pendingAssignments.includes(id));
+
+        // Remove unassigned judges
+        if (toRemove.length > 0) {
             await supabase
                 .from('judge_assignments')
                 .delete()
-                .eq('judge_id', judgeId)
-                .eq('category_id', categoryId);
-        } else {
-            // Add assignment
-            await supabase.from('judge_assignments').insert({
-                judge_id: judgeId,
-                category_id: categoryId,
-            });
+                .eq('category_id', categoryId)
+                .in('judge_id', toRemove);
         }
 
-        fetchData();
+        // Add new assignments
+        if (toAdd.length > 0) {
+            const inserts = toAdd.map(judgeId => ({
+                judge_id: judgeId,
+                category_id: categoryId,
+            }));
+            await supabase.from('judge_assignments').insert(inserts);
+        }
+
+        await fetchData();
+        setShowAssignModal(false);
     };
 
     const getAssignedJudgesForCategory = (categoryId: number): Judge[] => {
@@ -2402,19 +2481,24 @@ const JudgesTab = ({ event }: { event: Event }) => {
                             key={judge.id}
                             className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow"
                         >
-                            {/* Card Header */}
+                            {/* Card Header with Avatar */}
                             <div className="bg-gradient-to-r from-maroon to-maroon-dark p-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold">
-                                        {judge.name.charAt(0).toUpperCase()}
-                                    </div>
+                                    {judge.photo_url ? (
+                                        <img
+                                            src={judge.photo_url}
+                                            alt={judge.name}
+                                            className="w-12 h-12 rounded-full object-cover border-2 border-white/30"
+                                        />
+                                    ) : (
+                                        <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-lg border-2 border-white/30">
+                                            {judge.name.charAt(0).toUpperCase()}
+                                        </div>
+                                    )}
                                     <div className="text-white flex-1 min-w-0">
                                         <h4 className="font-semibold truncate">
-                                            {judge.title ? `${judge.title} ` : ''}{judge.name}
+                                            {judge.name}
                                         </h4>
-                                        <p className="text-white/70 text-sm truncate">
-                                            {judge.affiliation || 'Judge'}
-                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -2531,26 +2615,42 @@ const JudgesTab = ({ event }: { event: Event }) => {
                             autoFocus
                         />
                     </div>
+
+                    {/* Photo Upload */}
                     <div>
-                        <label className="form-label">Title (Optional)</label>
-                        <input
-                            type="text"
-                            value={judgeTitle}
-                            onChange={(e) => setJudgeTitle(e.target.value)}
-                            placeholder="e.g., Dr., Prof., Ms."
-                            className="form-input"
-                        />
+                        <label className="form-label">Photo (Optional)</label>
+                        {judgeImagePreview ? (
+                            <div className="flex justify-center py-2">
+                                <div className="relative">
+                                    <img
+                                        src={judgeImagePreview}
+                                        alt="Judge preview"
+                                        className="w-24 h-24 object-cover rounded-full border-3 border-gray-200 shadow-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={removeJudgeImage}
+                                        className="absolute top-0 right-0 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
+                                    >
+                                        <FaTimes className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-maroon/50 hover:bg-gray-50 transition-all">
+                                <FaImage className="w-6 h-6 text-gray-400 mb-1" />
+                                <span className="text-sm text-gray-500">Click to upload photo</span>
+                                <span className="text-xs text-gray-400">JPG or PNG, max 5MB</span>
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png"
+                                    onChange={handleJudgeImageChange}
+                                    className="hidden"
+                                />
+                            </label>
+                        )}
                     </div>
-                    <div>
-                        <label className="form-label">Affiliation (Optional)</label>
-                        <input
-                            type="text"
-                            value={judgeAffiliation}
-                            onChange={(e) => setJudgeAffiliation(e.target.value)}
-                            placeholder="e.g., LDCU College of Arts"
-                            className="form-input"
-                        />
-                    </div>
+
                     {!editingJudge && (
                         <p className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
                             💡 A unique access code will be generated automatically.
@@ -2563,10 +2663,10 @@ const JudgesTab = ({ event }: { event: Event }) => {
                     </button>
                     <button
                         onClick={handleSaveJudge}
-                        disabled={!judgeName.trim()}
+                        disabled={!judgeName.trim() || uploadingJudge}
                         className="btn-primary flex-1"
                     >
-                        {editingJudge ? 'Update Judge' : 'Add Judge'}
+                        {uploadingJudge ? 'Uploading...' : (editingJudge ? 'Update Judge' : 'Add Judge')}
                     </button>
                 </div>
             </Modal>
@@ -2579,13 +2679,11 @@ const JudgesTab = ({ event }: { event: Event }) => {
             >
                 <div className="space-y-2 max-h-80 overflow-y-auto">
                     {judges.map((judge) => {
-                        const isAssigned = selectedCategory
-                            ? assignedJudges[selectedCategory.id]?.includes(judge.id)
-                            : false;
+                        const isAssigned = pendingAssignments.includes(judge.id);
                         return (
                             <div
                                 key={judge.id}
-                                onClick={() => selectedCategory && toggleJudgeAssignment(judge.id, selectedCategory.id)}
+                                onClick={() => toggleJudgeAssignment(judge.id)}
                                 className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${isAssigned
                                     ? 'bg-maroon/10 border-2 border-maroon'
                                     : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
@@ -2597,16 +2695,19 @@ const JudgesTab = ({ event }: { event: Event }) => {
                                 </div>
                                 <div className="flex-1">
                                     <p className="font-medium text-gray-900">
-                                        {judge.title ? `${judge.title} ` : ''}{judge.name}
+                                        {judge.name}
                                     </p>
-                                    <p className="text-sm text-gray-500">{judge.affiliation || 'Judge'}</p>
+                                    <p className="text-sm text-gray-500">Judge</p>
                                 </div>
                             </div>
                         );
                     })}
                 </div>
                 <div className="flex gap-3 mt-6">
-                    <button onClick={() => setShowAssignModal(false)} className="btn-primary flex-1">
+                    <button onClick={() => setShowAssignModal(false)} className="btn-ghost flex-1">
+                        Cancel
+                    </button>
+                    <button onClick={saveJudgeAssignments} className="btn-primary flex-1">
                         Done
                     </button>
                 </div>

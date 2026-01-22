@@ -52,7 +52,7 @@ const JudgeLayout = () => {
                             </div>
                             <div>
                                 <p className="text-white font-semibold">
-                                    {judge.title ? `${judge.title} ${judge.name}` : judge.name}
+                                    {judge.name}
                                 </p>
                             </div>
                         </div>

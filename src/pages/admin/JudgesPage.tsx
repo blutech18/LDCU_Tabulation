@@ -11,8 +11,6 @@ const JudgesPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [editingJudge, setEditingJudge] = useState<Judge | null>(null);
     const [judgeName, setJudgeName] = useState('');
-    const [judgeTitle, setJudgeTitle] = useState('');
-    const [judgeAffiliation, setJudgeAffiliation] = useState('');
     const [copiedId, setCopiedId] = useState<number | null>(null);
 
     useEffect(() => {
@@ -40,8 +38,6 @@ const JudgesPage = () => {
         const code = generateCode();
         const { error } = await supabase.from('judges').insert({
             name: judgeName,
-            title: judgeTitle || null,
-            affiliation: judgeAffiliation || null,
             code,
         });
 
@@ -58,8 +54,6 @@ const JudgesPage = () => {
             .from('judges')
             .update({
                 name: judgeName,
-                title: judgeTitle || null,
-                affiliation: judgeAffiliation || null,
             })
             .eq('id', editingJudge.id);
 
@@ -87,16 +81,12 @@ const JudgesPage = () => {
     const openEditModal = (judge: Judge) => {
         setEditingJudge(judge);
         setJudgeName(judge.name);
-        setJudgeTitle(judge.title || '');
-        setJudgeAffiliation(judge.affiliation || '');
         setShowModal(true);
     };
 
     const openAddModal = () => {
         setEditingJudge(null);
         setJudgeName('');
-        setJudgeTitle('');
-        setJudgeAffiliation('');
         setShowModal(true);
     };
 
@@ -104,8 +94,6 @@ const JudgesPage = () => {
         setShowModal(false);
         setEditingJudge(null);
         setJudgeName('');
-        setJudgeTitle('');
-        setJudgeAffiliation('');
     };
 
     if (loading) {
@@ -160,10 +148,10 @@ const JudgesPage = () => {
                                     </div>
                                     <div className="text-white">
                                         <h3 className="font-semibold">
-                                            {judge.title ? `${judge.title} ` : ''}{judge.name}
+                                            {judge.name}
                                         </h3>
                                         <p className="text-white/70 text-sm">
-                                            {judge.affiliation || 'Judge'}
+                                            Judge
                                         </p>
                                     </div>
                                 </div>
@@ -230,26 +218,6 @@ const JudgesPage = () => {
                             placeholder="Enter judge name"
                             className="form-input"
                             autoFocus
-                        />
-                    </div>
-                    <div>
-                        <label className="form-label">Title (Optional)</label>
-                        <input
-                            type="text"
-                            value={judgeTitle}
-                            onChange={(e) => setJudgeTitle(e.target.value)}
-                            placeholder="e.g., Dr., Prof., Ms."
-                            className="form-input"
-                        />
-                    </div>
-                    <div>
-                        <label className="form-label">Affiliation (Optional)</label>
-                        <input
-                            type="text"
-                            value={judgeAffiliation}
-                            onChange={(e) => setJudgeAffiliation(e.target.value)}
-                            placeholder="e.g., LDCU College of Arts"
-                            className="form-input"
                         />
                     </div>
                     {!editingJudge && (
