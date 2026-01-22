@@ -63,12 +63,14 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
 
         // Fetch existing rankings from scores table
         // First get the first criteria for this category
-        const { data: criteriaData } = await supabase
+        const { data: criteriaList } = await supabase
             .from('criteria')
             .select('id')
             .eq('category_id', categoryId)
             .order('display_order')
-            .single();
+            .limit(1);
+
+        const criteriaData = criteriaList?.[0];
 
         let rankingData: any[] = [];
         if (criteriaData) {
@@ -114,12 +116,14 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
         setSaving(true);
 
         // Get the first criteria for this category
-        const { data: criteriaData } = await supabase
+        const { data: criteriaList } = await supabase
             .from('criteria')
             .select('id')
             .eq('category_id', categoryId)
             .order('display_order')
-            .single();
+            .limit(1);
+
+        const criteriaData = criteriaList?.[0];
 
         if (!criteriaData) {
             console.error('No criteria found for category');
@@ -153,12 +157,14 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
 
     const handleUnlock = async () => {
         // Get the first criteria for this category
-        const { data: criteriaData } = await supabase
+        const { data: criteriaList } = await supabase
             .from('criteria')
             .select('id')
             .eq('category_id', categoryId)
             .order('display_order')
-            .single();
+            .limit(1);
+
+        const criteriaData = criteriaList?.[0];
 
         if (criteriaData) {
             await supabase

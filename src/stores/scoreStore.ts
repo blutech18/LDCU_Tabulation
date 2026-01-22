@@ -145,13 +145,14 @@ export const useScoreStore = create<ScoreState>((set, get) => ({
                 if (!rank) throw new Error("No rank assigned");
 
                 // For ranking categories, get the first criteria to store the rank
-                const { data: criteria } = await supabase
+                const { data: criteriaList } = await supabase
                     .from('criteria')
                     .select('id')
                     .eq('category_id', categoryId)
                     .order('display_order')
-                    .single();
+                    .limit(1);
 
+                const criteria = criteriaList?.[0];
                 if (!criteria) throw new Error("No criteria found for category");
 
                 // Store rank in scores table with the first criteria
