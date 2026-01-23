@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FaArrowRight, FaCalendarAlt } from 'react-icons/fa';
+import { FaArrowRight, FaCalendarAlt, FaTrophy, FaTable } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Judge, Category, Event } from '../../types';
 
@@ -108,12 +108,20 @@ const JudgeLanding = () => {
     // Loading state
     if (loading) {
         return (
-            <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
+            <div className="max-w-4xl mx-auto px-4 py-8">
                 <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    className={`w-16 h-16 border-4 rounded-full ${isDarkMode ? 'border-white/20 border-t-gold' : 'border-maroon/20 border-t-maroon'}`}
-                />
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.5 }}
+                    className="text-center mb-8"
+                >
+                    <h2 className={`text-3xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
+                        Available Categories
+                    </h2>
+                    <p className={isDarkMode ? 'text-white/60' : 'text-gray-600'}>
+                        Select a category to start judging
+                    </p>
+                </motion.div>
             </div>
         );
     }
@@ -199,11 +207,18 @@ const JudgeLanding = () => {
                                     {categories[0].name}
                                 </h2>
                                 <div className="flex items-center justify-center gap-2">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${categories[0].tabular_type === 'ranking'
-                                        ? isDarkMode ? 'bg-maroon/20 text-maroon-light' : 'bg-maroon/10 text-maroon'
-                                        : isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700'
-                                        }`}>
-                                        {categories[0].tabular_type === 'ranking' ? 'Ranking-Based' : 'Scoring-Based'}
+                                    <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium ${isDarkMode ? 'bg-maroon/90 text-white border border-maroon' : 'bg-maroon text-white border border-maroon-dark'}`}>
+                                        {categories[0].tabular_type === 'ranking' ? (
+                                            <>
+                                                <FaTrophy className="w-3.5 h-3.5 text-gold" />
+                                                Ranking
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FaTable className="w-3.5 h-3.5 text-gold" />
+                                                Scoring
+                                            </>
+                                        )}
                                     </span>
                                 </div>
                             </>
@@ -291,11 +306,18 @@ const JudgeLanding = () => {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${category.tabular_type === 'ranking'
-                                        ? isDarkMode ? 'bg-maroon/20 text-maroon-light' : 'bg-maroon/10 text-maroon'
-                                        : isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700'
-                                        }`}>
-                                        {category.tabular_type === 'ranking' ? 'Ranking' : 'Scoring'}
+                                    <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium ${isDarkMode ? 'bg-maroon/90 text-white border border-maroon' : 'bg-maroon text-white border border-maroon-dark'}`}>
+                                        {category.tabular_type === 'ranking' ? (
+                                            <>
+                                                <FaTrophy className="w-3.5 h-3.5 text-gold" />
+                                                Ranking
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FaTable className="w-3.5 h-3.5 text-gold" />
+                                                Scoring
+                                            </>
+                                        )}
                                     </span>
                                     <FaArrowRight className={`w-4 h-4 group-hover:translate-x-1 transition-all ${isDarkMode ? 'text-white/40 group-hover:text-gold' : 'text-gray-400 group-hover:text-maroon'}`} />
                                 </div>

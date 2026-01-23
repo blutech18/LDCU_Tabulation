@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { FaLock, FaUnlock, FaCheck, FaMars, FaVenus } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
@@ -15,7 +15,7 @@ interface ScoringTabularProps {
 interface ScoreState {
     [participantId: number]: {
         [criteriaId: number]: number;
-        locked: boolean;
+        locked?: boolean;
     };
 }
 
@@ -26,6 +26,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
+    const saveTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
     const isIndividual = eventParticipantType === 'individual';
 
@@ -97,7 +98,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
         // Initialize scores state
         const initialScores: ScoreState = {};
         participantsList?.forEach((participant) => {
-            initialScores[participant.id] = { locked: false };
+            initialScores[participant.id] = {};
             criteriaData?.forEach((c: any) => {
                 initialScores[participant.id][c.id] = 0;
             });
@@ -113,25 +114,14 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
 
         scoreData?.forEach((score: any) => {
             if (!initialScores[score.participant_id]) {
-                initialScores[score.participant_id] = { locked: false }; // Init if missing
+                initialScores[score.participant_id] = {};
             }
 
-            // Assuming simplified schema where we just have rows
             if (score.criteria_id) {
                 initialScores[score.participant_id][score.criteria_id] = score.score;
             }
-
-            // status logic?
-            // schema says 'status' is in `events`? 
-            // `scores` table has `rank` but not explicitly `status` column in minimal schema sql provided?
-            // Wait, looking at scoreStore logic I wrote earlier: 
-            // "lockedParticipants.add(score.participant_id)" just by existence.
-            // We can infer locked if scores exist? Or we need that status column back?
-            // The previous file used `status` in scores.
-            // The minimal schema `scores` table definition:
-            // id, judge_id, participant_id, criteria_id, score, rank, submitted_at, created_at
-            // No 'status' column.
-            // Use `submitted_at` as locked indicator?
+            
+            // Use submitted_at as locked indicator
             if (score.submitted_at) {
                 initialScores[score.participant_id].locked = true;
             }
@@ -141,9 +131,33 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
         setLoading(false);
     };
 
+    // Auto-save score to database with debouncing (without locking)
+    const saveScoreToDb = useCallback(async (participantId: number, criteriaId: number, score: number) => {
+        setSaving(true);
+        try {
+            // Check if participant is already locked
+            const isLocked = scores[participantId]?.locked;
+            
+            await supabase
+                .from('scores')
+                .upsert({
+                    judge_id: judgeId,
+                    participant_id: participantId,
+                    criteria_id: criteriaId,
+                    score: score,
+                    // Only set submitted_at if already locked, otherwise leave it null
+                    submitted_at: isLocked ? new Date().toISOString() : null
+                }, { onConflict: 'judge_id,participant_id,criteria_id' });
+        } catch (error) {
+            console.error('Error saving score:', error);
+        } finally {
+            setSaving(false);
+        }
+    }, [judgeId, scores]);
+
     const handleScoreChange = (participantId: number, criteriaId: number, value: number) => {
         if (scores[participantId]?.locked) return;
-
+        
         const max = criteria.find((c) => c.id === criteriaId)?.percentage || 100;
         const clampedValue = Math.min(Math.max(0, value), max);
 
@@ -154,26 +168,27 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                 [criteriaId]: clampedValue,
             },
         }));
-    };
 
-    const calculateTotal = (participantId: number) => {
-        if (!scores[participantId]) return 0;
-        return criteria.reduce((sum, c) => sum + (scores[participantId][c.id] || 0), 0);
+        // Debounced auto-save
+        const key = `${participantId}-${criteriaId}`;
+        if (saveTimeoutRef.current[key]) {
+            clearTimeout(saveTimeoutRef.current[key]);
+        }
+        saveTimeoutRef.current[key] = setTimeout(() => {
+            saveScoreToDb(participantId, criteriaId, clampedValue);
+        }, 500);
     };
 
     const handleLockParticipant = async (participantId: number) => {
         setSaving(true);
 
-        // Save scores to database
+        // Save all scores for this participant
         const participantScores = scores[participantId];
-
-        // Prepare inserts
         const inserts = criteria.map(c => ({
             judge_id: judgeId,
             participant_id: participantId,
             criteria_id: c.id,
             score: participantScores[c.id] || 0,
-            // category_id? Not in scores table.
             submitted_at: new Date().toISOString()
         }));
 
@@ -195,23 +210,14 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
     };
 
     const handleUnlockParticipant = async (participantId: number) => {
-        // To unlock, we clear submitted_at?
-        // Or delete rows?
-        // Let's update submitted_at to null
-
-        /* 
-           Wait, `submitted_at` might not be nullable? 
-           Schema: "submitted_at TIMESTAMPTZ DEFAULT NOW()" 
-           Usually nullable if not specified NOT NULL.
-           Let's try to update it to null.
-        */
-
+        const criteriaIds = criteria.map(c => c.id);
+        
         await supabase
             .from('scores')
             .update({ submitted_at: null })
             .eq('judge_id', judgeId)
-            // .eq('category_id', categoryId) // Not in table
-            .eq('participant_id', participantId);
+            .eq('participant_id', participantId)
+            .in('criteria_id', criteriaIds);
 
         setScores((prev) => ({
             ...prev,
@@ -222,12 +228,65 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
         }));
     };
 
+    const calculateTotal = (participantId: number) => {
+        if (!scores[participantId]) return 0;
+        return criteria.reduce((sum, c) => sum + (scores[participantId][c.id] || 0), 0);
+    };
+
+    // Convert rank to ordinal format (1st, 2nd, 3rd, etc.)
+    const getOrdinal = (rank: number) => {
+        const suffixes = ['th', 'st', 'nd', 'rd'];
+        const v = rank % 100;
+        return rank + (suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]);
+    };
+
+    // Cleanup timeouts on unmount
+    useEffect(() => {
+        return () => {
+            Object.values(saveTimeoutRef.current).forEach(timeout => clearTimeout(timeout));
+        };
+    }, []);
+
     // Filter participants by gender for individual events
     const filteredParticipants = isIndividual
         ? participants.filter(p => p.gender === selectedGender)
         : participants;
 
-    const allParticipantsLocked = filteredParticipants.length > 0 && filteredParticipants.every((c) => scores[c.id]?.locked);
+    // Calculate rankings based on total scores
+    const getRankings = () => {
+        const participantsWithScores = filteredParticipants.map(p => ({
+            id: p.id,
+            total: calculateTotal(p.id)
+        }));
+
+        // Check if all scores are 0
+        const hasAnyScores = participantsWithScores.some(p => p.total > 0);
+        
+        // Sort by total score (descending)
+        participantsWithScores.sort((a, b) => b.total - a.total);
+
+        // Assign ranks (handle ties)
+        const rankings: { [key: number]: number | null } = {};
+        let currentRank = 1;
+        for (let i = 0; i < participantsWithScores.length; i++) {
+            // Don't assign rank if no scores have been entered yet
+            if (!hasAnyScores || participantsWithScores[i].total === 0) {
+                rankings[participantsWithScores[i].id] = null;
+            } else {
+                if (i > 0 && participantsWithScores[i].total < participantsWithScores[i - 1].total) {
+                    currentRank = i + 1;
+                }
+                rankings[participantsWithScores[i].id] = currentRank;
+            }
+        }
+
+        return rankings;
+    };
+
+    const rankings = getRankings();
+
+    // Check if any scores have been entered
+    const hasAnyScoresEntered = filteredParticipants.some(p => calculateTotal(p.id) > 0);
 
     if (loading) {
         return (
@@ -281,24 +340,31 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                     <table className="w-full">
                         <thead>
                             <tr className={isDarkMode ? 'border-b border-white/10' : 'bg-gray-50 border-b border-gray-200'}>
-                                <th className={`px-4 py-4 text-left text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                <th className={`px-4 py-4 text-left text-sm font-semibold w-64 min-w-64 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                     Participant
                                 </th>
                                 {criteria.map((c) => (
-                                    <th key={c.id} className={`px-4 py-4 text-center text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        <div>{c.name}</div>
-                                        <div className={`text-xs font-normal ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
-                                            {c.percentage > 0 ? `${c.percentage}%` : ''} 
-                                            {(c.min_score !== undefined || c.max_score !== undefined) && (
-                                                <span className="ml-1">({c.min_score ?? 0}-{c.max_score ?? 100})</span>
-                                            )}
+                                    <th key={c.id} className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        <div className="flex flex-col items-center justify-center">
+                                            <div>{c.name}</div>
+                                            <div className={`text-xs font-normal ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                                                {c.percentage > 0 ? `${c.percentage}%` : ''}
+                                            </div>
                                         </div>
                                     </th>
                                 ))}
-                                <th className={`px-4 py-4 text-center text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Total
+                                <th className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    <div className="flex flex-col items-center justify-center">
+                                        <div>Total</div>
+                                        <div className={`text-xs font-normal ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                                            100%
+                                        </div>
+                                    </div>
                                 </th>
-                                <th className={`px-4 py-4 text-center text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                <th className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    Rank
+                                </th>
+                                <th className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                     Action
                                 </th>
                             </tr>
@@ -312,19 +378,19 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                                     transition={{ delay: index * 0.05 }}
                                     className={`${scores[participant.id]?.locked ? (isDarkMode ? 'bg-green-500/10' : 'bg-green-50') : (isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')}`}
                                 >
-                                    <td className="px-4 py-4">
+                                    <td className="px-4 py-4 w-64 min-w-64">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shadow-sm ${isDarkMode ? 'bg-gradient-to-br from-primary-500 to-accent-500' : 'bg-gradient-to-br from-maroon to-maroon-dark'}`}>
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shadow-sm flex-shrink-0 ${isDarkMode ? 'bg-gradient-to-br from-primary-500 to-accent-500' : 'bg-gradient-to-br from-maroon to-maroon-dark'}`}>
                                                 {participant.number || participant.name.charAt(0)}
                                             </div>
-                                            <div>
-                                                <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{participant.name}</p>
-                                                <p className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>{participant.department}</p>
+                                            <div className="min-w-0 flex-1">
+                                                <p className={`font-medium truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{participant.name}</p>
+                                                <p className={`text-sm truncate ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>{participant.department}</p>
                                             </div>
                                         </div>
                                     </td>
                                     {criteria.map((c) => (
-                                        <td key={c.id} className="px-4 py-4">
+                                        <td key={c.id} className="px-4 py-4 text-center align-middle">
                                             <input
                                                 type="number"
                                                 min={0}
@@ -334,17 +400,37 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                                                 onChange={(e) =>
                                                     handleScoreChange(participant.id, c.id, parseFloat(e.target.value) || 0)
                                                 }
+                                                onFocus={(e) => e.target.select()}
                                                 disabled={scores[participant.id]?.locked}
                                                 className={`w-20 px-3 py-2 rounded-lg text-center focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${isDarkMode ? 'bg-white/10 border border-white/20 text-white placeholder:text-white/30 focus:ring-primary-500' : 'bg-white border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:ring-maroon focus:border-maroon disabled:bg-gray-100'}`}
                                             />
                                         </td>
                                     ))}
-                                    <td className="px-4 py-4 text-center">
+                                    <td className="px-4 py-4 text-center align-middle">
                                         <span className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
                                             {calculateTotal(participant.id).toFixed(1)}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-4 text-center">
+                                    <td className="px-4 py-4 text-center align-middle">
+                                        {rankings[participant.id] === null ? (
+                                            <span className={`text-lg ${isDarkMode ? 'text-white/30' : 'text-gray-400'}`}>
+                                                —
+                                            </span>
+                                        ) : (
+                                            <span className={`text-lg font-bold ${
+                                                rankings[participant.id] === 1
+                                                    ? isDarkMode ? 'text-yellow-300' : 'text-yellow-600'
+                                                    : rankings[participant.id] === 2
+                                                        ? isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                                                        : rankings[participant.id] === 3
+                                                            ? isDarkMode ? 'text-amber-300' : 'text-amber-600'
+                                                            : isDarkMode ? 'text-white/70' : 'text-gray-500'
+                                            }`}>
+                                                {getOrdinal(rankings[participant.id]!)}
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-4 text-center align-middle">
                                         {scores[participant.id]?.locked ? (
                                             <button
                                                 onClick={() => handleUnlockParticipant(participant.id)}
@@ -371,22 +457,50 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                 </div>
             </div>
 
-            {/* Submit All Button */}
-            {allParticipantsLocked && (
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex justify-center"
-                >
+            {/* Auto-save indicator and Complete button */}
+            <div className="flex items-center justify-between">
+                <div className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                    {saving ? (
+                        <span className="flex items-center gap-2">
+                            <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Saving...
+                        </span>
+                    ) : (
+                        <span>✓ All changes saved automatically</span>
+                    )}
+                </div>
+                {hasAnyScoresEntered && (
                     <button
-                        onClick={onFinish}
-                        className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all shadow-lg shadow-green-500/25"
+                        onClick={async () => {
+                            // Lock all participants before finishing
+                            setSaving(true);
+                            const lockPromises = filteredParticipants.map(async (participant) => {
+                                if (!scores[participant.id]?.locked) {
+                                    const participantScores = scores[participant.id];
+                                    const inserts = criteria.map(c => ({
+                                        judge_id: judgeId,
+                                        participant_id: participant.id,
+                                        criteria_id: c.id,
+                                        score: participantScores[c.id] || 0,
+                                        submitted_at: new Date().toISOString()
+                                    }));
+                                    await supabase
+                                        .from('scores')
+                                        .upsert(inserts, { onConflict: 'judge_id,participant_id,criteria_id' });
+                                }
+                            });
+                            await Promise.all(lockPromises);
+                            setSaving(false);
+                            onFinish();
+                        }}
+                        disabled={saving}
+                        className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-xl transition-all shadow-lg disabled:opacity-50 text-white ${isDarkMode ? 'bg-maroon hover:bg-maroon-dark shadow-maroon/50' : 'bg-maroon hover:bg-maroon-dark shadow-maroon/25'}`}
                     >
                         <FaCheck className="w-5 h-5" />
                         Complete Scoring
                     </button>
-                </motion.div>
-            )}
+                )}
+            </div>
         </div>
     );
 };

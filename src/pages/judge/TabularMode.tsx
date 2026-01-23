@@ -95,22 +95,24 @@ const TabularMode = () => {
                 >
                     <FaChevronLeft className="w-5 h-5" />
                 </button>
-                <div className="flex-1 flex items-center gap-3">
-                    <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>{category.name}</h1>
-                    <span className={`text-sm ${isDarkMode ? 'text-white/40' : 'text-gray-400'}`}>•</span>
-                    <p className={`text-sm font-medium ${isDarkMode ? 'text-white/60' : 'text-gray-600'}`}>
-                        {category.events.name}
-                    </p>
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${isDarkMode ? 'bg-white/10 border border-white/20' : 'bg-gray-100 border border-gray-200'}`}>
+                <div className="flex-1 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>{category.name}</h1>
+                        <span className={`text-lg ${isDarkMode ? 'text-white/40' : 'text-gray-400'}`}>•</span>
+                        <p className={`text-lg ${isDarkMode ? 'text-white/60' : 'text-gray-600'}`}>
+                            {category.events.name}
+                        </p>
+                    </div>
+                    <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${isDarkMode ? 'bg-maroon/90 border border-maroon' : 'bg-maroon border border-maroon-dark'}`}>
                         {isRankingBased ? (
                             <>
-                                <FaTrophy className={`w-3.5 h-3.5 ${isDarkMode ? 'text-maroon' : 'text-maroon'}`} />
-                                <span className={isDarkMode ? 'text-maroon-light' : 'text-maroon'}>Ranking</span>
+                                <FaTrophy className="w-4 h-4 text-gold" />
+                                <span className="text-white">Ranking</span>
                             </>
                         ) : (
                             <>
-                                <FaTable className={`w-3.5 h-3.5 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                                <span className={isDarkMode ? 'text-blue-300' : 'text-blue-700'}>Scoring</span>
+                                <FaTable className="w-4 h-4 text-gold" />
+                                <span className="text-white">Scoring</span>
                             </>
                         )}
                     </span>

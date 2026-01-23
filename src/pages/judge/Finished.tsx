@@ -29,7 +29,7 @@ const Finished = () => {
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: 'spring', delay: 0.2, stiffness: 200 }}
-                    className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mb-6 shadow-2xl shadow-green-500/40"
+                    className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-maroon to-maroon-dark flex items-center justify-center mb-6 shadow-2xl shadow-maroon/40"
                 >
                     <FaCheckCircle className="w-12 h-12 text-white" />
                 </motion.div>
@@ -87,7 +87,7 @@ const Finished = () => {
                             }}
                             className="absolute left-1/2 w-3 h-3 rounded-sm"
                             style={{
-                                backgroundColor: ['#22c55e', '#10b981', '#14b8a6', '#0ea5e9', '#8b5cf6'][
+                                backgroundColor: ['#8B1538', '#B91C1C', '#DC2626', '#F59E0B', '#FBBF24'][
                                     i % 5
                                 ],
                             }}

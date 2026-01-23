@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, Reorder } from 'framer-motion';
-import { FaGripVertical, FaLock, FaCheck, FaMars, FaVenus } from 'react-icons/fa';
+import { FaGripVertical, FaCheck, FaMars, FaVenus } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Contestant, Criteria } from '../../types';
 
@@ -14,7 +14,6 @@ interface RankingTabularProps {
 
 interface RankedContestant extends Contestant {
     rank: number;
-    locked: boolean;
 }
 
 const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType }: RankingTabularProps) => {
@@ -22,8 +21,8 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
     const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [locked, setLocked] = useState(false);
     const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
+    const [firstCriteriaId, setFirstCriteriaId] = useState<number | null>(null);
 
     const isIndividual = eventParticipantType === 'individual';
 
@@ -85,12 +84,15 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
             .limit(1);
 
         const firstCriteria = criteriaList?.[0];
+        if (firstCriteria) {
+            setFirstCriteriaId(firstCriteria.id);
+        }
 
         let rankingData: any[] = [];
         if (firstCriteria) {
             const { data } = await supabase
                 .from('scores')
-                .select('participant_id, rank, submitted_at')
+                .select('participant_id, rank')
                 .eq('criteria_id', firstCriteria.id)
                 .eq('judge_id', judgeId)
                 .not('rank', 'is', null);
@@ -103,7 +105,6 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
             return {
                 ...contestant,
                 rank: existingRank?.rank || index + 1,
-                locked: !!existingRank?.submitted_at,
             };
         }) || [];
 
@@ -111,86 +112,57 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
         rankedContestants.sort((a, b) => a.rank - b.rank);
 
         setContestants(rankedContestants);
-        setLocked(rankedContestants.every((c) => c.locked));
         setLoading(false);
     };
 
+    // Auto-save rankings to database
+    const saveRankingsToDb = useCallback(async (contestantsToSave: RankedContestant[]) => {
+        if (!firstCriteriaId) return;
+        
+        setSaving(true);
+        try {
+            // Upsert all rankings
+            const rankings = contestantsToSave.map((contestant) => ({
+                judge_id: judgeId,
+                participant_id: contestant.id,
+                criteria_id: firstCriteriaId,
+                score: 0,
+                rank: contestant.rank,
+                submitted_at: new Date().toISOString(),
+            }));
+
+            await supabase
+                .from('scores')
+                .upsert(rankings, { onConflict: 'judge_id,participant_id,criteria_id' });
+        } catch (error) {
+            console.error('Error saving rankings:', error);
+        } finally {
+            setSaving(false);
+        }
+    }, [judgeId, firstCriteriaId]);
+
     // Handle drag-and-drop reorder
     const handleReorder = (newOrder: RankedContestant[]) => {
-        if (locked) return;
-
         // Update ranks based on new order
         const updatedContestants = newOrder.map((contestant, index) => ({
             ...contestant,
             rank: index + 1,
         }));
-        setContestants(updatedContestants);
-    };
 
-    const handleSaveRankings = async () => {
-        setSaving(true);
-
-        // Get the first criteria for this category
-        const { data: criteriaList } = await supabase
-            .from('criteria')
-            .select('id')
-            .eq('category_id', categoryId)
-            .order('display_order')
-            .limit(1);
-
-        const criteriaData = criteriaList?.[0];
-
-        if (!criteriaData) {
-            console.error('No criteria found for category');
-            setSaving(false);
-            return;
+        let allContestants: RankedContestant[];
+        
+        // If individual event, merge with other gender contestants
+        if (isIndividual) {
+            const otherGender = contestants.filter(c => c.gender !== selectedGender);
+            allContestants = [...updatedContestants, ...otherGender];
+        } else {
+            allContestants = updatedContestants;
         }
-
-        // Delete existing rankings for this judge and category
-        await supabase
-            .from('scores')
-            .delete()
-            .eq('criteria_id', criteriaData.id)
-            .eq('judge_id', judgeId);
-
-        // Insert new rankings into scores table
-        const rankings = contestants.map((contestant) => ({
-            judge_id: judgeId,
-            participant_id: contestant.id,
-            criteria_id: criteriaData.id,
-            score: 0, // Not used for ranking
-            rank: contestant.rank,
-            submitted_at: new Date().toISOString(),
-        }));
-
-        await supabase.from('scores').insert(rankings);
-
-        setContestants((prev) => prev.map((c) => ({ ...c, locked: true })));
-        setLocked(true);
-        setSaving(false);
-    };
-
-    const handleUnlock = async () => {
-        // Get the first criteria for this category
-        const { data: criteriaList } = await supabase
-            .from('criteria')
-            .select('id')
-            .eq('category_id', categoryId)
-            .order('display_order')
-            .limit(1);
-
-        const criteriaData = criteriaList?.[0];
-
-        if (criteriaData) {
-            await supabase
-                .from('scores')
-                .update({ submitted_at: null })
-                .eq('criteria_id', criteriaData.id)
-                .eq('judge_id', judgeId);
-        }
-
-        setContestants((prev) => prev.map((c) => ({ ...c, locked: false })));
-        setLocked(false);
+        
+        setContestants(allContestants);
+        
+        // Auto-save immediately after reorder
+        saveRankingsToDb(allContestants);
     };
 
     // Convert rank to ordinal format (1st, 2nd, 3rd, etc.)
@@ -202,7 +174,6 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
 
     // Handle rank input change - moves contestant to new position
     const handleRankChange = (contestantId: number, newRank: number) => {
-        if (locked) return;
         if (newRank < 1 || newRank > filteredContestants.length) return;
 
         // Find current index of the contestant
@@ -220,13 +191,20 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
             rank: index + 1,
         }));
 
+        let allContestants: RankedContestant[];
+        
         // If individual event, merge with other gender contestants
         if (isIndividual) {
             const otherGender = contestants.filter(c => c.gender !== selectedGender);
-            setContestants([...updatedContestants, ...otherGender]);
+            allContestants = [...updatedContestants, ...otherGender];
         } else {
-            setContestants(updatedContestants);
+            allContestants = updatedContestants;
         }
+        
+        setContestants(allContestants);
+        
+        // Auto-save immediately after rank change
+        saveRankingsToDb(allContestants);
     };
 
     // Filter contestants by gender for individual events
@@ -280,14 +258,6 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                 </div>
             )}
 
-            {/* Instructions */}
-            <div className={`rounded-xl p-4 ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/20' : 'bg-maroon/10 border border-maroon/30'}`}>
-                <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
-                    {locked
-                        ? '✅ Rankings are locked. Click unlock to make changes.'
-                        : '🎯 Drag to reorder or edit the rank number. Lower rank = higher placement.'}
-                </p>
-            </div>
 
             {/* Sub-Criteria Display */}
             {criteria.length > 0 && (
@@ -339,21 +309,18 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                         <Reorder.Item
                             key={contestant.id}
                             value={contestant}
-                            className={`${locked ? '' : 'cursor-grab active:cursor-grabbing'}`}
-                            style={{ pointerEvents: locked ? 'none' : 'auto' } as any}
+                            className="cursor-grab active:cursor-grabbing"
                         >
                             <motion.div
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.05 }}
-                                className={`flex items-center gap-4 p-4 ${locked ? (isDarkMode ? 'bg-green-500/5' : 'bg-green-50') : (isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')}`}
+                                className={`flex items-center gap-4 p-4 ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}
                             >
                                 {/* Drag Handle */}
-                                {!locked && (
-                                    <div className={isDarkMode ? 'text-white/30 hover:text-white/50' : 'text-gray-400 hover:text-gray-600'}>
-                                        <FaGripVertical className="w-4 h-4" />
-                                    </div>
-                                )}
+                                <div className={isDarkMode ? 'text-white/30 hover:text-white/50' : 'text-gray-400 hover:text-gray-600'}>
+                                    <FaGripVertical className="w-4 h-4" />
+                                </div>
 
                                 {/* Editable Rank Input - uses index+1 for display */}
                                 <div className="flex-shrink-0">
@@ -377,8 +344,8 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                                                 (e.target as HTMLInputElement).blur();
                                             }
                                         }}
-                                        disabled={locked}
-                                        className={`w-14 h-10 text-center font-bold text-lg rounded-lg border-2 transition-all focus:outline-none focus:ring-2 disabled:cursor-not-allowed ${
+                                        onFocus={(e) => e.target.select()}
+                                        className={`w-14 h-10 text-center font-bold text-lg rounded-lg border-2 transition-all focus:outline-none focus:ring-2 ${
                                             index === 0
                                                 ? isDarkMode 
                                                     ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 focus:ring-yellow-500/50' 
@@ -429,44 +396,45 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                 </Reorder.Group>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-center gap-4">
-                {locked ? (
-                    <>
-                        <button
-                            onClick={handleUnlock}
-                            className={`flex items-center gap-2 px-6 py-3 font-medium rounded-xl transition-colors shadow-lg ${isDarkMode ? 'bg-white/20 backdrop-blur-lg border border-white/30 text-white hover:bg-white/30' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-maroon'}`}
-                        >
-                            <FaLock className="w-4 h-4" />
-                            Unlock Rankings
-                        </button>
-                        <button
-                            onClick={onFinish}
-                            className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-600 transition-all shadow-lg shadow-green-500/25"
-                        >
-                            <FaCheck className="w-5 h-5" />
-                            Complete Ranking
-                        </button>
-                    </>
-                ) : (
-                    <button
-                        onClick={handleSaveRankings}
-                        disabled={saving}
-                        className={`flex items-center gap-2 px-8 py-4 text-white font-semibold rounded-xl transition-all shadow-lg disabled:opacity-50 ${isDarkMode ? 'bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold shadow-gold/50' : 'bg-maroon hover:bg-maroon-dark shadow-maroon/25'}`}
-                    >
-                        {saving ? (
-                            <>
-                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <FaCheck className="w-5 h-5" />
-                                Save Rankings
-                            </>
-                        )}
-                    </button>
-                )}
+            {/* Auto-save indicator and Complete button */}
+            <div className="flex items-center justify-between">
+                <div className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                    {saving ? (
+                        <span className="flex items-center gap-2">
+                            <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Saving...
+                        </span>
+                    ) : (
+                        <span>✓ All changes saved automatically</span>
+                    )}
+                </div>
+                <button
+                    onClick={async () => {
+                        // Save all rankings before finishing
+                        if (firstCriteriaId) {
+                            setSaving(true);
+                            const rankings = contestants.map((contestant) => ({
+                                judge_id: judgeId,
+                                participant_id: contestant.id,
+                                criteria_id: firstCriteriaId,
+                                score: 0,
+                                rank: contestant.rank,
+                                submitted_at: new Date().toISOString(),
+                            }));
+
+                            await supabase
+                                .from('scores')
+                                .upsert(rankings, { onConflict: 'judge_id,participant_id,criteria_id' });
+                            setSaving(false);
+                        }
+                        onFinish();
+                    }}
+                    disabled={saving}
+                    className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-xl transition-all shadow-lg disabled:opacity-50 text-white ${isDarkMode ? 'bg-maroon hover:bg-maroon-dark shadow-maroon/50' : 'bg-maroon hover:bg-maroon-dark shadow-maroon/25'}`}
+                >
+                    <FaCheck className="w-5 h-5" />
+                    Complete Ranking
+                </button>
             </div>
         </div>
     );
