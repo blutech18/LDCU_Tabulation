@@ -229,11 +229,6 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
         }
     };
 
-    const getPoints = (rank: number, total: number) => {
-        // Points system: 1st gets max points, decreasing
-        return Math.max(total - rank + 1, 1);
-    };
-
     // Filter contestants by gender for individual events
     const filteredContestants = isIndividual
         ? contestants.filter(c => c.gender === selectedGender)
@@ -403,19 +398,6 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                                     />
                                 </div>
 
-                                {/* Ordinal Display - based on position in list */}
-                                <div className={`w-10 text-center font-semibold text-sm ${
-                                    index === 0
-                                        ? isDarkMode ? 'text-yellow-300' : 'text-yellow-600'
-                                        : index === 1
-                                            ? isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                            : index === 2
-                                                ? isDarkMode ? 'text-amber-300' : 'text-amber-600'
-                                                : isDarkMode ? 'text-white/50' : 'text-gray-500'
-                                }`}>
-                                    {getOrdinal(index + 1)}
-                                </div>
-
                                 {/* Contestant Info */}
                                 <div className="flex-1">
                                     <div className="flex items-center gap-3">
@@ -429,12 +411,17 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                                     </div>
                                 </div>
 
-                                {/* Points Display - based on position in list */}
-                                <div className="text-right">
-                                    <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
-                                        {getPoints(index + 1, filteredContestants.length)}
-                                    </p>
-                                    <p className={`text-xs ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>points</p>
+                                {/* Ordinal Display - on the right side */}
+                                <div className={`text-right font-bold text-xl ${
+                                    index === 0
+                                        ? isDarkMode ? 'text-yellow-300' : 'text-yellow-600'
+                                        : index === 1
+                                            ? isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                                            : index === 2
+                                                ? isDarkMode ? 'text-amber-300' : 'text-amber-600'
+                                                : isDarkMode ? 'text-white/50' : 'text-gray-500'
+                                }`}>
+                                    {getOrdinal(index + 1)}
                                 </div>
                             </motion.div>
                         </Reorder.Item>
