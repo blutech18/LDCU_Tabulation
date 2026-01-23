@@ -37,7 +37,8 @@ const TabularMode = () => {
         events (
           id,
           name,
-          date
+          date,
+          participant_type
         )
       `)
             .eq('id', categoryId)
@@ -128,6 +129,7 @@ const TabularMode = () => {
                         judgeId={judge.id}
                         onFinish={handleFinish}
                         isDarkMode={isDarkMode}
+                        eventParticipantType={category.events.participant_type}
                     />
                 ) : (
                     <ScoringTabular
@@ -135,6 +137,7 @@ const TabularMode = () => {
                         judgeId={judge.id}
                         onFinish={handleFinish}
                         isDarkMode={isDarkMode}
+                        eventParticipantType={category.events.participant_type}
                     />
                 )}
             </motion.div>

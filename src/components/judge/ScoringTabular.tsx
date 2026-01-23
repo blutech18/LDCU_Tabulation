@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FaLock, FaUnlock, FaCheck } from 'react-icons/fa';
+import { FaLock, FaUnlock, FaCheck, FaMars, FaVenus } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Participant, Criteria } from '../../types';
 
@@ -9,6 +9,7 @@ interface ScoringTabularProps {
     judgeId: number;
     onFinish: () => void;
     isDarkMode: boolean;
+    eventParticipantType?: 'individual' | 'group';
 }
 
 interface ScoreState {
@@ -18,12 +19,15 @@ interface ScoreState {
     };
 }
 
-const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTabularProps) => {
+const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType }: ScoringTabularProps) => {
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [scores, setScores] = useState<ScoreState>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
+
+    const isIndividual = eventParticipantType === 'individual';
 
     useEffect(() => {
         fetchData();
@@ -47,7 +51,8 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
                 .select('*')
                 .eq('event_id', categoryData.event_id)
                 .eq('is_active', true)
-                .order('number');
+                .order('display_order', { ascending: true, nullsFirst: false })
+                .order('number', { ascending: true });
 
             if (!error && participantData) {
                 participantsList = participantData as Participant[];
@@ -79,7 +84,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
         // Fetch existing scores for this judge and criteria
         const criteriaIds = (criteriaData || []).map((c: any) => c.id);
         let scoreData: any[] = [];
-        
+
         if (criteriaIds.length > 0) {
             const { data } = await supabase
                 .from('scores')
@@ -217,7 +222,12 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
         }));
     };
 
-    const allParticipantsLocked = participants.length > 0 && participants.every((c) => scores[c.id]?.locked);
+    // Filter participants by gender for individual events
+    const filteredParticipants = isIndividual
+        ? participants.filter(p => p.gender === selectedGender)
+        : participants;
+
+    const allParticipantsLocked = filteredParticipants.length > 0 && filteredParticipants.every((c) => scores[c.id]?.locked);
 
     if (loading) {
         return (
@@ -229,6 +239,42 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
 
     return (
         <div className="space-y-6">
+            {/* Gender Toggle for Individual Events */}
+            {isIndividual && (
+                <div className={`rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/5 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-sm'}`}>
+                    <div className="grid grid-cols-2">
+                        <button
+                            onClick={() => setSelectedGender('male')}
+                            className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-all ${selectedGender === 'male'
+                                ? isDarkMode
+                                    ? 'bg-white/10 text-white border-b-2 border-blue-400'
+                                    : 'bg-blue-50 text-blue-700 border-b-2 border-blue-500'
+                                : isDarkMode
+                                    ? 'text-white/50 hover:text-white/70 hover:bg-white/5'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                            <FaMars className={`w-4 h-4 ${selectedGender === 'male' ? (isDarkMode ? 'text-blue-400' : 'text-blue-500') : ''}`} />
+                            Male
+                        </button>
+                        <button
+                            onClick={() => setSelectedGender('female')}
+                            className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-all ${selectedGender === 'female'
+                                ? isDarkMode
+                                    ? 'bg-white/10 text-white border-b-2 border-pink-400'
+                                    : 'bg-pink-50 text-pink-700 border-b-2 border-pink-500'
+                                : isDarkMode
+                                    ? 'text-white/50 hover:text-white/70 hover:bg-white/5'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                            <FaVenus className={`w-4 h-4 ${selectedGender === 'female' ? (isDarkMode ? 'text-pink-400' : 'text-pink-500') : ''}`} />
+                            Female
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Scoring Table */}
             <div className={`rounded-2xl overflow-hidden shadow-lg ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200'}`}>
                 <div className="overflow-x-auto">
@@ -241,7 +287,12 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
                                 {criteria.map((c) => (
                                     <th key={c.id} className={`px-4 py-4 text-center text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                         <div>{c.name}</div>
-                                        <div className={`text-xs font-normal ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>Max: {c.percentage}%</div>
+                                        <div className={`text-xs font-normal ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                                            {c.percentage > 0 ? `${c.percentage}%` : ''} 
+                                            {(c.min_score !== undefined || c.max_score !== undefined) && (
+                                                <span className="ml-1">({c.min_score ?? 0}-{c.max_score ?? 100})</span>
+                                            )}
+                                        </div>
                                     </th>
                                 ))}
                                 <th className={`px-4 py-4 text-center text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -253,7 +304,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: ScoringTa
                             </tr>
                         </thead>
                         <tbody className={isDarkMode ? 'divide-y divide-white/5' : 'divide-y divide-gray-100'}>
-                            {participants.map((participant, index) => (
+                            {filteredParticipants.map((participant, index) => (
                                 <motion.tr
                                     key={participant.id}
                                     initial={{ opacity: 0, x: -20 }}

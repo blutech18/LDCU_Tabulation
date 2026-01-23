@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import {
     FaTable,
     FaUsers,
@@ -18,6 +18,9 @@ import {
     FaMapMarkerAlt,
     FaImage,
     FaTimes,
+    FaGripVertical,
+    FaMars,
+    FaVenus,
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import Modal from '../../components/common/Modal';
@@ -1325,6 +1328,8 @@ const TabularTab = ({ event }: { event: Event }) => {
 // Participants Tab Component
 const ParticipantsTab = ({ event }: { event: Event }) => {
     const [contestants, setContestants] = useState<Contestant[]>([]);
+    const [maleParticipants, setMaleParticipants] = useState<Contestant[]>([]);
+    const [femaleParticipants, setFemaleParticipants] = useState<Contestant[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [contestantName, setContestantName] = useState('');
@@ -1333,6 +1338,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
     const [editingContestant, setEditingContestant] = useState<Contestant | null>(null);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deletingContestant, setDeletingContestant] = useState<Contestant | null>(null);
+    const [savingOrder, setSavingOrder] = useState(false);
 
     // Image upload states
     const [contestantImageFile, setContestantImageFile] = useState<File | null>(null);
@@ -1402,9 +1408,56 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
             .from('participants')
             .select('*')
             .eq('event_id', event.id)
-            .order('number');
-        setContestants((data as Contestant[]) || []);
+            .order('display_order', { ascending: true, nullsFirst: false })
+            .order('number', { ascending: true });
+
+        const allContestants = (data as Contestant[]) || [];
+        setContestants(allContestants);
+
+        // Separate by gender for individual events
+        if (isIndividual) {
+            const males = allContestants
+                .filter(c => c.gender === 'male')
+                .sort((a, b) => (a.display_order || a.number || 0) - (b.display_order || b.number || 0));
+            const females = allContestants
+                .filter(c => c.gender === 'female')
+                .sort((a, b) => (a.display_order || a.number || 0) - (b.display_order || b.number || 0));
+            setMaleParticipants(males);
+            setFemaleParticipants(females);
+        }
+
         setLoading(false);
+    };
+
+    // Save display order to database
+    const saveDisplayOrder = async (participants: Contestant[]) => {
+        setSavingOrder(true);
+
+        const updates = participants.map((p, index) => ({
+            id: p.id,
+            display_order: index + 1,
+        }));
+
+        for (const update of updates) {
+            await supabase
+                .from('participants')
+                .update({ display_order: update.display_order })
+                .eq('id', update.id);
+        }
+
+        setSavingOrder(false);
+    };
+
+    // Handle reorder for male participants
+    const handleMaleReorder = (newOrder: Contestant[]) => {
+        setMaleParticipants(newOrder);
+        saveDisplayOrder(newOrder);
+    };
+
+    // Handle reorder for female participants
+    const handleFemaleReorder = (newOrder: Contestant[]) => {
+        setFemaleParticipants(newOrder);
+        saveDisplayOrder(newOrder);
     };
 
     const handleAddContestant = async () => {
@@ -1416,11 +1469,19 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
             photoUrl = await uploadImage(contestantImageFile);
         }
 
+        // Calculate next display_order based on gender
+        let nextDisplayOrder = contestants.length + 1;
+        if (isIndividual && contestantGender) {
+            const genderList = contestantGender === 'male' ? maleParticipants : femaleParticipants;
+            nextDisplayOrder = genderList.length + 1;
+        }
+
         const insertData: any = {
             name: contestantName,
             department: contestantDept,
             number: contestants.length + 1,
             event_id: event.id,
+            display_order: nextDisplayOrder,
         };
 
         // Add gender for individual participants
@@ -1510,6 +1571,131 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
         setContestantImagePreview('');
     };
 
+    // Render a single participant card (used in both grid and reorderable list)
+    const renderParticipantCard = (contestant: Contestant, showDragHandle: boolean = false, displayIndex?: number) => (
+        <div className="flex items-start gap-3 w-full">
+            {showDragHandle && (
+                <div className="flex-shrink-0 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing pt-4">
+                    <FaGripVertical className="w-4 h-4" />
+                </div>
+            )}
+            {/* Order Number - show position in list (1-indexed) */}
+            {showDragHandle && displayIndex !== undefined && (
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-maroon/10 flex items-center justify-center text-maroon font-bold text-sm mt-3">
+                    {displayIndex + 1}
+                </div>
+            )}
+            {/* Avatar */}
+            <div className="flex-shrink-0">
+                {contestant.photo_url ? (
+                    <img
+                        src={contestant.photo_url}
+                        alt={contestant.name}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-maroon/20 shadow-sm"
+                    />
+                ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-maroon to-maroon-dark flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                        {contestant.name.charAt(0)}
+                    </div>
+                )}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 truncate text-sm">{contestant.name}</p>
+                <p className="text-xs text-gray-500 truncate">{contestant.department}</p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-1 flex-shrink-0">
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        openEditModal(contestant);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-maroon rounded-lg hover:bg-gray-100 transition-colors"
+                    title="Edit"
+                >
+                    <FaEdit className="w-3.5 h-3.5" />
+                </button>
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingContestant(contestant);
+                        setShowDeleteModal(true);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-gray-100 transition-colors"
+                    title="Delete"
+                >
+                    <FaTrash className="w-3.5 h-3.5" />
+                </button>
+            </div>
+        </div>
+    );
+
+    // Render gender panel with reorderable list
+    const renderGenderPanel = (
+        gender: 'male' | 'female',
+        participants: Contestant[],
+        onReorder: (newOrder: Contestant[]) => void
+    ) => {
+        const isMale = gender === 'male';
+        const Icon = isMale ? FaMars : FaVenus;
+        const colorClass = isMale ? 'blue' : 'pink';
+        const title = isMale ? 'Male Participants' : 'Female Participants';
+
+        return (
+            <div className="flex-1 min-w-0">
+                <div className={`bg-${colorClass}-50 border border-${colorClass}-200 rounded-xl overflow-hidden`}>
+                    {/* Panel Header */}
+                    <div className={`px-4 py-3 bg-${colorClass}-100 border-b border-${colorClass}-200 flex items-center gap-2`}>
+                        <Icon className={`w-4 h-4 text-${colorClass}-600`} />
+                        <h4 className={`font-semibold text-${colorClass}-800`}>{title}</h4>
+                        <span className={`ml-auto text-xs px-2 py-0.5 rounded-full bg-${colorClass}-200 text-${colorClass}-700`}>
+                            {participants.length}
+                        </span>
+                    </div>
+
+                    {/* Reorderable List */}
+                    <div className="p-2 max-h-[500px] overflow-y-auto">
+                        {participants.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500 text-sm">
+                                No {gender} participants yet
+                            </div>
+                        ) : (
+                            <Reorder.Group
+                                axis="y"
+                                values={participants}
+                                onReorder={onReorder}
+                                className="space-y-2"
+                            >
+                                {participants.map((contestant, index) => (
+                                    <Reorder.Item
+                                        key={contestant.id}
+                                        value={contestant}
+                                        className="cursor-grab active:cursor-grabbing"
+                                    >
+                                        <motion.div
+                                            layout
+                                            initial={{ opacity: 0, y: -10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className={`bg-white border border-${colorClass}-100 rounded-lg p-3 hover:border-${colorClass}-300 hover:shadow-sm transition-all`}
+                                        >
+                                            {renderParticipantCard(contestant, true, index)}
+                                        </motion.div>
+                                    </Reorder.Item>
+                                ))}
+                            </Reorder.Group>
+                        )}
+                    </div>
+                </div>
+                {savingOrder && (
+                    <p className="text-xs text-gray-500 mt-2 text-center">Saving order...</p>
+                )}
+            </div>
+        );
+    };
+
     if (loading) {
         return <div className="text-center py-8 text-gray-500">Loading participants...</div>;
     }
@@ -1520,7 +1706,9 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
                 <div>
                     <h3 className="font-semibold text-gray-900">{getParticipantLabel()}s</h3>
                     <p className="text-sm text-gray-500">
-                        {event.participant_type === 'individual' ? 'Individual participants' : 'Group participants'}
+                        {isIndividual
+                            ? 'Drag and drop to reorder participants. Order is saved automatically.'
+                            : 'Group participants'}
                     </p>
                 </div>
                 <button
@@ -1531,6 +1719,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
                     Add {getParticipantLabel()}
                 </button>
             </div>
+
             {contestants.length === 0 ? (
                 <div className="text-center py-12 bg-gray-50 rounded-xl">
                     <div className="w-16 h-16 bg-maroon/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1544,7 +1733,14 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
                         Add your first {getParticipantLabel().toLowerCase()}
                     </button>
                 </div>
+            ) : isIndividual ? (
+                /* Side-by-side Male/Female Panels for Individual Events */
+                <div className="flex gap-4 flex-col lg:flex-row">
+                    {renderGenderPanel('male', maleParticipants, handleMaleReorder)}
+                    {renderGenderPanel('female', femaleParticipants, handleFemaleReorder)}
+                </div>
             ) : (
+                /* Original Grid Layout for Group Events */
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {contestants.map((contestant) => (
                         <div
@@ -1570,20 +1766,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
                                 {/* Content */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-start justify-between gap-2 mb-1">
-                                        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                                            <p className="font-medium text-gray-900 truncate">{contestant.name}</p>
-                                            {isIndividual && contestant.gender && (
-                                                <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${contestant.gender === 'male'
-                                                    ? 'bg-blue-100 text-blue-700'
-                                                    : contestant.gender === 'female'
-                                                        ? 'bg-pink-100 text-pink-700'
-                                                        : 'bg-gray-100 text-gray-700'
-                                                    }`}>
-                                                    {contestant.gender === 'male' ? '♂ Male' : contestant.gender === 'female' ? '♀ Female' : 'Other'}
-                                                </span>
-                                            )}
-                                        </div>
-
+                                        <p className="font-medium text-gray-900 truncate">{contestant.name}</p>
                                         {/* Action Buttons */}
                                         <div className="flex gap-1 flex-shrink-0">
                                             <button
@@ -1646,7 +1829,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
                     {/* Gender field - only for individual participants */}
                     {isIndividual && (
                         <div>
-                            <label className="form-label">Gender</label>
+                            <label className="form-label">Gender *</label>
                             <div className="flex gap-3">
                                 {[
                                     { value: 'male', label: 'Male', icon: '♂' },
@@ -1713,7 +1896,7 @@ const ParticipantsTab = ({ event }: { event: Event }) => {
                     </button>
                     <button
                         onClick={editingContestant ? handleEditContestant : handleAddContestant}
-                        disabled={!contestantName.trim() || !contestantDept.trim() || uploading}
+                        disabled={!contestantName.trim() || !contestantDept.trim() || (isIndividual && !contestantGender) || uploading}
                         className="btn-primary flex-1"
                     >
                         {uploading ? 'Uploading...' : editingContestant ? 'Save Changes' : `Add ${getParticipantLabel()}`}
@@ -2174,7 +2357,7 @@ const JudgesTab = ({ event }: { event: Event }) => {
     const [showJudgeModal, setShowJudgeModal] = useState(false);
     const [editingJudge, setEditingJudge] = useState<Judge | null>(null);
     const [judgeName, setJudgeName] = useState('');
-    
+
     // Judge image upload states
     const [judgeImageFile, setJudgeImageFile] = useState<File | null>(null);
     const [judgeImagePreview, setJudgeImagePreview] = useState<string>('');
@@ -2334,7 +2517,7 @@ const JudgesTab = ({ event }: { event: Event }) => {
                         photo_url: photoUrl,
                     })
                     .eq('id', editingJudge.id);
-                
+
                 if (error) {
                     console.error('Error updating judge:', error);
                     alert('Failed to update judge: ' + error.message);
@@ -2349,7 +2532,7 @@ const JudgesTab = ({ event }: { event: Event }) => {
                     code,
                     photo_url: photoUrl,
                 });
-                
+
                 if (error) {
                     console.error('Error creating judge:', error);
                     alert('Failed to create judge: ' + error.message);

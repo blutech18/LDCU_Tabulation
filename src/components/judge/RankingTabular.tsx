@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, Reorder } from 'framer-motion';
-import { FaGripVertical, FaLock, FaCheck, FaMedal } from 'react-icons/fa';
+import { FaGripVertical, FaLock, FaCheck, FaMars, FaVenus } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Contestant, Criteria } from '../../types';
 
@@ -9,6 +9,7 @@ interface RankingTabularProps {
     judgeId: number;
     onFinish: () => void;
     isDarkMode: boolean;
+    eventParticipantType?: 'individual' | 'group';
 }
 
 interface RankedContestant extends Contestant {
@@ -16,12 +17,15 @@ interface RankedContestant extends Contestant {
     locked: boolean;
 }
 
-const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTabularProps) => {
+const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType }: RankingTabularProps) => {
     const [contestants, setContestants] = useState<RankedContestant[]>([]);
     const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [locked, setLocked] = useState(false);
+    const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
+
+    const isIndividual = eventParticipantType === 'individual';
 
     useEffect(() => {
         fetchData();
@@ -53,7 +57,8 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
                 .select('*')
                 .eq('event_id', categoryData.event_id)
                 .eq('is_active', true)
-                .order('number');
+                .order('display_order', { ascending: true, nullsFirst: false })
+                .order('number', { ascending: true });
 
             if (!error && contestantData) {
                 contestantsList = contestantData as Contestant[];
@@ -110,6 +115,7 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
         setLoading(false);
     };
 
+    // Handle drag-and-drop reorder
     const handleReorder = (newOrder: RankedContestant[]) => {
         if (locked) return;
 
@@ -187,16 +193,39 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
         setLocked(false);
     };
 
-    const getRankMedal = (rank: number) => {
-        switch (rank) {
-            case 1:
-                return <FaMedal className="w-5 h-5 text-yellow-400" />;
-            case 2:
-                return <FaMedal className="w-5 h-5 text-gray-300" />;
-            case 3:
-                return <FaMedal className="w-5 h-5 text-amber-600" />;
-            default:
-                return <span className={`w-5 h-5 flex items-center justify-center font-bold ${isDarkMode ? 'text-white/50' : 'text-gray-600'}`}>{rank}</span>;
+    // Convert rank to ordinal format (1st, 2nd, 3rd, etc.)
+    const getOrdinal = (rank: number) => {
+        const suffixes = ['th', 'st', 'nd', 'rd'];
+        const v = rank % 100;
+        return rank + (suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]);
+    };
+
+    // Handle rank input change - moves contestant to new position
+    const handleRankChange = (contestantId: number, newRank: number) => {
+        if (locked) return;
+        if (newRank < 1 || newRank > filteredContestants.length) return;
+
+        // Find current index of the contestant
+        const currentIndex = filteredContestants.findIndex(c => c.id === contestantId);
+        if (currentIndex === -1 || currentIndex + 1 === newRank) return;
+
+        // Create new order by moving the contestant to the new position
+        const newOrder = [...filteredContestants];
+        const [movedContestant] = newOrder.splice(currentIndex, 1);
+        newOrder.splice(newRank - 1, 0, movedContestant);
+
+        // Update ranks based on new order
+        const updatedContestants = newOrder.map((contestant, index) => ({
+            ...contestant,
+            rank: index + 1,
+        }));
+
+        // If individual event, merge with other gender contestants
+        if (isIndividual) {
+            const otherGender = contestants.filter(c => c.gender !== selectedGender);
+            setContestants([...updatedContestants, ...otherGender]);
+        } else {
+            setContestants(updatedContestants);
         }
     };
 
@@ -204,6 +233,11 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
         // Points system: 1st gets max points, decreasing
         return Math.max(total - rank + 1, 1);
     };
+
+    // Filter contestants by gender for individual events
+    const filteredContestants = isIndividual
+        ? contestants.filter(c => c.gender === selectedGender)
+        : contestants;
 
     if (loading) {
         return (
@@ -215,12 +249,48 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
 
     return (
         <div className="space-y-6">
+            {/* Gender Toggle for Individual Events */}
+            {isIndividual && (
+                <div className={`rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/5 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-sm'}`}>
+                    <div className="grid grid-cols-2">
+                        <button
+                            onClick={() => setSelectedGender('male')}
+                            className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-all ${selectedGender === 'male'
+                                ? isDarkMode
+                                    ? 'bg-white/10 text-white border-b-2 border-blue-400'
+                                    : 'bg-blue-50 text-blue-700 border-b-2 border-blue-500'
+                                : isDarkMode
+                                    ? 'text-white/50 hover:text-white/70 hover:bg-white/5'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                            <FaMars className={`w-4 h-4 ${selectedGender === 'male' ? (isDarkMode ? 'text-blue-400' : 'text-blue-500') : ''}`} />
+                            Male
+                        </button>
+                        <button
+                            onClick={() => setSelectedGender('female')}
+                            className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-all ${selectedGender === 'female'
+                                ? isDarkMode
+                                    ? 'bg-white/10 text-white border-b-2 border-pink-400'
+                                    : 'bg-pink-50 text-pink-700 border-b-2 border-pink-500'
+                                : isDarkMode
+                                    ? 'text-white/50 hover:text-white/70 hover:bg-white/5'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
+                        >
+                            <FaVenus className={`w-4 h-4 ${selectedGender === 'female' ? (isDarkMode ? 'text-pink-400' : 'text-pink-500') : ''}`} />
+                            Female
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Instructions */}
             <div className={`rounded-xl p-4 ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/20' : 'bg-maroon/10 border border-maroon/30'}`}>
                 <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
                     {locked
                         ? '✅ Rankings are locked. Click unlock to make changes.'
-                        : '🎯 Drag and drop to rearrange contestants by rank. Top position = 1st place.'}
+                        : '🎯 Drag to reorder or edit the rank number. Lower rank = higher placement.'}
                 </p>
             </div>
 
@@ -244,11 +314,18 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
                                         {criterion.description}
                                     </p>
                                 )}
-                                {criterion.percentage && criterion.percentage > 0 && (
-                                    <p className={`text-xs mt-1 font-medium ${isDarkMode ? 'text-gold' : 'text-maroon'}`}>
-                                        {criterion.percentage}%
-                                    </p>
-                                )}
+                                <div className="flex items-center gap-2 mt-1">
+                                    {criterion.percentage > 0 && (
+                                        <span className={`text-xs font-medium ${isDarkMode ? 'text-gold' : 'text-maroon'}`}>
+                                            {criterion.percentage}%
+                                        </span>
+                                    )}
+                                    {(criterion.min_score !== undefined || criterion.max_score !== undefined) && (
+                                        <span className={`text-xs ${isDarkMode ? 'text-white/40' : 'text-gray-400'}`}>
+                                            (Score: {criterion.min_score ?? 0} - {criterion.max_score ?? 100})
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -259,11 +336,11 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
             <div className={`rounded-2xl overflow-hidden shadow-lg ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200'}`}>
                 <Reorder.Group
                     axis="y"
-                    values={contestants}
+                    values={filteredContestants}
                     onReorder={handleReorder}
                     className={isDarkMode ? 'divide-y divide-white/5' : 'divide-y divide-gray-100'}
                 >
-                    {contestants.map((contestant, index) => (
+                    {filteredContestants.map((contestant, index) => (
                         <Reorder.Item
                             key={contestant.id}
                             value={contestant}
@@ -274,8 +351,7 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.05 }}
-                                className={`flex items-center gap-4 p-4 ${locked ? (isDarkMode ? 'bg-green-500/5' : 'bg-green-50') : (isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')
-                                    }`}
+                                className={`flex items-center gap-4 p-4 ${locked ? (isDarkMode ? 'bg-green-500/5' : 'bg-green-50') : (isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50')}`}
                             >
                                 {/* Drag Handle */}
                                 {!locked && (
@@ -284,18 +360,60 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
                                     </div>
                                 )}
 
-                                {/* Rank Badge */}
-                                <div
-                                    className={`w-12 h-12 rounded-xl flex items-center justify-center ${contestant.rank === 1
-                                        ? isDarkMode ? 'bg-yellow-500/20' : 'bg-yellow-100 border border-yellow-300'
-                                        : contestant.rank === 2
-                                            ? isDarkMode ? 'bg-gray-400/20' : 'bg-gray-100 border border-gray-300'
-                                            : contestant.rank === 3
-                                                ? isDarkMode ? 'bg-amber-600/20' : 'bg-amber-100 border border-amber-300'
-                                                : isDarkMode ? 'bg-white/10' : 'bg-gray-50 border border-gray-200'
+                                {/* Editable Rank Input - uses index+1 for display */}
+                                <div className="flex-shrink-0">
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={filteredContestants.length}
+                                        defaultValue={index + 1}
+                                        key={`${contestant.id}-${index}`}
+                                        onBlur={(e) => {
+                                            const newRank = parseInt(e.target.value);
+                                            if (newRank && newRank >= 1 && newRank <= filteredContestants.length && newRank !== index + 1) {
+                                                handleRankChange(contestant.id, newRank);
+                                            } else {
+                                                // Reset to current position if invalid
+                                                e.target.value = String(index + 1);
+                                            }
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                (e.target as HTMLInputElement).blur();
+                                            }
+                                        }}
+                                        disabled={locked}
+                                        className={`w-14 h-10 text-center font-bold text-lg rounded-lg border-2 transition-all focus:outline-none focus:ring-2 disabled:cursor-not-allowed ${
+                                            index === 0
+                                                ? isDarkMode 
+                                                    ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 focus:ring-yellow-500/50' 
+                                                    : 'bg-yellow-50 border-yellow-300 text-yellow-700 focus:ring-yellow-400'
+                                                : index === 1
+                                                    ? isDarkMode 
+                                                        ? 'bg-gray-400/20 border-gray-400/50 text-gray-300 focus:ring-gray-400/50' 
+                                                        : 'bg-gray-100 border-gray-300 text-gray-700 focus:ring-gray-400'
+                                                    : index === 2
+                                                        ? isDarkMode 
+                                                            ? 'bg-amber-600/20 border-amber-500/50 text-amber-300 focus:ring-amber-500/50' 
+                                                            : 'bg-amber-50 border-amber-300 text-amber-700 focus:ring-amber-400'
+                                                        : isDarkMode 
+                                                            ? 'bg-white/10 border-white/20 text-white focus:ring-white/30' 
+                                                            : 'bg-gray-50 border-gray-200 text-gray-700 focus:ring-maroon/30'
                                         }`}
-                                >
-                                    {getRankMedal(contestant.rank)}
+                                    />
+                                </div>
+
+                                {/* Ordinal Display - based on position in list */}
+                                <div className={`w-10 text-center font-semibold text-sm ${
+                                    index === 0
+                                        ? isDarkMode ? 'text-yellow-300' : 'text-yellow-600'
+                                        : index === 1
+                                            ? isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                                            : index === 2
+                                                ? isDarkMode ? 'text-amber-300' : 'text-amber-600'
+                                                : isDarkMode ? 'text-white/50' : 'text-gray-500'
+                                }`}>
+                                    {getOrdinal(index + 1)}
                                 </div>
 
                                 {/* Contestant Info */}
@@ -311,10 +429,10 @@ const RankingTabular = ({ categoryId, judgeId, onFinish, isDarkMode }: RankingTa
                                     </div>
                                 </div>
 
-                                {/* Points Display */}
+                                {/* Points Display - based on position in list */}
                                 <div className="text-right">
                                     <p className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
-                                        {getPoints(contestant.rank, contestants.length)}
+                                        {getPoints(index + 1, filteredContestants.length)}
                                     </p>
                                     <p className={`text-xs ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>points</p>
                                 </div>

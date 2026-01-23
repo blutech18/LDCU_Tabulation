@@ -55,6 +55,7 @@ export interface Participant {
     department?: string;
     gender?: 'male' | 'female';
     photo_url?: string;
+    display_order?: number;
     is_active: boolean;
     created_at: string;
 }
