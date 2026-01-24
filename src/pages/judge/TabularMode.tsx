@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FaChevronLeft, FaTable, FaTrophy } from 'react-icons/fa';
+import { FaChevronLeft, FaTable, FaTrophy, FaSync } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
-import ScoringTabular from '../../components/judge/ScoringTabular';
-import RankingTabular from '../../components/judge/RankingTabular';
+import ScoringTabular, { ScoringTabularRef } from '../../components/judge/ScoringTabular';
+import RankingTabular, { RankingTabularRef } from '../../components/judge/RankingTabular';
 import type { Judge, Category, Event } from '../../types';
 
 interface JudgeContext {
@@ -22,11 +22,46 @@ const TabularMode = () => {
     const { judge, isDarkMode } = useOutletContext<JudgeContext>();
     const [category, setCategory] = useState<CategoryWithEvent | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const scoringTabularRef = useRef<ScoringTabularRef>(null);
+    const rankingTabularRef = useRef<RankingTabularRef>(null);
 
     useEffect(() => {
         if (categoryId) {
             fetchCategory();
         }
+    }, [categoryId]);
+
+    // Enter fullscreen when component mounts
+    useEffect(() => {
+        const enterFullscreen = async () => {
+            try {
+                const element = document.documentElement;
+                if (element.requestFullscreen) {
+                    await element.requestFullscreen();
+                } else if ((element as any).webkitRequestFullscreen) {
+                    // Safari
+                    await (element as any).webkitRequestFullscreen();
+                } else if ((element as any).mozRequestFullScreen) {
+                    // Firefox
+                    await (element as any).mozRequestFullScreen();
+                } else if ((element as any).msRequestFullscreen) {
+                    // IE/Edge
+                    await (element as any).msRequestFullscreen();
+                }
+            } catch (error) {
+                console.log('Fullscreen not supported or failed:', error);
+            }
+        };
+
+        // Enter fullscreen after a short delay to ensure component is mounted
+        const timer = setTimeout(() => {
+            enterFullscreen();
+        }, 100);
+
+        return () => {
+            clearTimeout(timer);
+        };
     }, [categoryId]);
 
     const fetchCategory = async () => {
@@ -51,11 +86,48 @@ const TabularMode = () => {
     };
 
     const handleBack = () => {
+        // Exit fullscreen before navigating back
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        } else if ((document as any).webkitFullscreenElement) {
+            (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozFullScreenElement) {
+            (document as any).mozCancelFullScreen();
+        } else if ((document as any).msFullscreenElement) {
+            (document as any).msExitFullscreen();
+        }
         navigate('/judge/panel');
     };
 
     const handleFinish = () => {
+        // Exit fullscreen before navigating
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        } else if ((document as any).webkitFullscreenElement) {
+            (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozFullScreenElement) {
+            (document as any).mozCancelFullScreen();
+        } else if ((document as any).msFullscreenElement) {
+            (document as any).msExitFullscreen();
+        }
         navigate(`/judge/finished/${categoryId}`);
+    };
+
+    const handleRefresh = async () => {
+        if (!category) return;
+        setIsRefreshing(true);
+        try {
+            const isRankingBased = category.tabular_type === 'ranking';
+            if (isRankingBased && rankingTabularRef.current) {
+                await rankingTabularRef.current.refresh();
+            } else if (!isRankingBased && scoringTabularRef.current) {
+                await scoringTabularRef.current.refresh();
+            }
+        } catch (error) {
+            console.error('Error refreshing data:', error);
+        } finally {
+            setIsRefreshing(false);
+        }
     };
 
     if (loading) {
@@ -82,7 +154,7 @@ const TabularMode = () => {
     const isRankingBased = category.tabular_type === 'ranking';
 
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-8 sm:pb-10 md:pb-12 lg:pb-14">
             {/* Header */}
             <motion.div
                 initial={{ opacity: 0, y: -20 }}
@@ -103,19 +175,29 @@ const TabularMode = () => {
                             {category.events.name}
                         </p>
                     </div>
-                    <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${isDarkMode ? 'bg-maroon/90 border border-maroon' : 'bg-maroon border border-maroon-dark'}`}>
-                        {isRankingBased ? (
-                            <>
-                                <FaTrophy className="w-4 h-4 text-gold" />
-                                <span className="text-white">Ranking</span>
-                            </>
-                        ) : (
-                            <>
-                                <FaTable className="w-4 h-4 text-gold" />
-                                <span className="text-white">Scoring</span>
-                            </>
-                        )}
-                    </span>
+                    <div className="flex items-center gap-3">
+                        <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${isDarkMode ? 'bg-maroon/90 border border-maroon' : 'bg-maroon border border-maroon-dark'}`}>
+                            {isRankingBased ? (
+                                <>
+                                    <FaTrophy className="w-4 h-4 text-gold" />
+                                    <span className="text-white">Ranking</span>
+                                </>
+                            ) : (
+                                <>
+                                    <FaTable className="w-4 h-4 text-gold" />
+                                    <span className="text-white">Scoring</span>
+                                </>
+                            )}
+                        </span>
+                        <button
+                            onClick={handleRefresh}
+                            disabled={isRefreshing}
+                            className={`p-2 rounded-lg transition-all ${isDarkMode ? 'hover:bg-white/10 text-white/70 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                            title="Refresh data"
+                        >
+                            <FaSync className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        </button>
+                    </div>
                 </div>
             </motion.div>
 
@@ -127,7 +209,8 @@ const TabularMode = () => {
             >
                 {isRankingBased ? (
                     <RankingTabular
-                        categoryId={parseInt(categoryId || '0')}
+                        ref={rankingTabularRef}
+                        categoryId={Number.parseInt(categoryId || '0')}
                         judgeId={judge.id}
                         onFinish={handleFinish}
                         isDarkMode={isDarkMode}
@@ -135,7 +218,8 @@ const TabularMode = () => {
                     />
                 ) : (
                     <ScoringTabular
-                        categoryId={parseInt(categoryId || '0')}
+                        ref={scoringTabularRef}
+                        categoryId={Number.parseInt(categoryId || '0')}
                         judgeId={judge.id}
                         onFinish={handleFinish}
                         isDarkMode={isDarkMode}

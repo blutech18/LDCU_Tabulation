@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { motion } from 'framer-motion';
 import { FaLock, FaUnlock, FaCheck, FaMars, FaVenus } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
@@ -10,16 +10,21 @@ interface ScoringTabularProps {
     onFinish: () => void;
     isDarkMode: boolean;
     eventParticipantType?: 'individual' | 'group';
+    onSaveStateChange?: (isSaving: boolean) => void;
+}
+
+export interface ScoringTabularRef {
+    refresh: () => Promise<void>;
 }
 
 interface ScoreState {
     [participantId: number]: {
-        [criteriaId: number]: number;
+        [criteriaId: number]: number | undefined;
         locked?: boolean;
     };
 }
 
-const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType }: ScoringTabularProps) => {
+const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType, onSaveStateChange }, ref) => {
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [scores, setScores] = useState<ScoreState>({});
@@ -30,11 +35,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
 
     const isIndividual = eventParticipantType === 'individual';
 
-    useEffect(() => {
-        fetchData();
-    }, [categoryId]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         // First, get the category to find its event_id
         const { data: categoryData } = await supabase
             .from('categories')
@@ -95,30 +96,25 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
             scoreData = data || [];
         }
 
-        // Initialize scores state
+        // Initialize scores state - default to 0 but can be cleared
         const initialScores: ScoreState = {};
         participantsList?.forEach((participant) => {
             initialScores[participant.id] = {};
             criteriaData?.forEach((c: any) => {
+                // Initialize with 0 as default
                 initialScores[participant.id][c.id] = 0;
             });
         });
 
-        // Apply existing scores
-        // Minimal schema storage strategy: one row per criteria score?
-        // Or one row per participant with details?
-        // Let's assume one row per criteria per participant per judge.
-        /*
-         scoreData is array of { participant_id, criteria_id, score, ... }
-        */
-
+        // Apply existing scores (overwrite defaults if they exist)
         scoreData?.forEach((score: any) => {
             if (!initialScores[score.participant_id]) {
                 initialScores[score.participant_id] = {};
             }
 
             if (score.criteria_id) {
-                initialScores[score.participant_id][score.criteria_id] = score.score;
+                // Set the score from database (including 0)
+                initialScores[score.participant_id][score.criteria_id] = score.score ?? 0;
             }
             
             // Use submitted_at as locked indicator
@@ -129,7 +125,23 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
 
         setScores(initialScores);
         setLoading(false);
-    };
+    }, [categoryId, judgeId]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    // Expose refresh function via ref
+    useImperativeHandle(ref, () => ({
+        refresh: fetchData
+    }), [fetchData]);
+
+    // Notify parent of save state changes
+    useEffect(() => {
+        if (onSaveStateChange) {
+            onSaveStateChange(saving);
+        }
+    }, [saving, onSaveStateChange]);
 
     // Auto-save score to database with debouncing (without locking)
     const saveScoreToDb = useCallback(async (participantId: number, criteriaId: number, score: number) => {
@@ -155,11 +167,35 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
         }
     }, [judgeId, scores]);
 
-    const handleScoreChange = (participantId: number, criteriaId: number, value: number) => {
+    const handleScoreChange = (participantId: number, criteriaId: number, value: string) => {
         if (scores[participantId]?.locked) return;
         
+        // Allow empty string
+        if (value === '') {
+            setScores((prev) => ({
+                ...prev,
+                [participantId]: {
+                    ...prev[participantId],
+                    [criteriaId]: undefined,
+                },
+            }));
+
+            // Debounced auto-save with 0 for empty values
+            const key = `${participantId}-${criteriaId}`;
+            if (saveTimeoutRef.current[key]) {
+                clearTimeout(saveTimeoutRef.current[key]);
+            }
+            saveTimeoutRef.current[key] = setTimeout(() => {
+                saveScoreToDb(participantId, criteriaId, 0);
+            }, 500);
+            return;
+        }
+
+        const numValue = Number.parseFloat(value);
+        if (isNaN(numValue)) return;
+
         const max = criteria.find((c) => c.id === criteriaId)?.percentage || 100;
-        const clampedValue = Math.min(Math.max(0, value), max);
+        const clampedValue = Math.min(Math.max(0, numValue), max);
 
         setScores((prev) => ({
             ...prev,
@@ -230,7 +266,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
 
     const calculateTotal = (participantId: number) => {
         if (!scores[participantId]) return 0;
-        return criteria.reduce((sum, c) => sum + (scores[participantId][c.id] || 0), 0);
+        return criteria.reduce((sum, c) => sum + (scores[participantId][c.id] ?? 0), 0);
     };
 
     // Convert rank to ordinal format (1st, 2nd, 3rd, etc.)
@@ -286,7 +322,10 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
     const rankings = getRankings();
 
     // Check if any scores have been entered
-    const hasAnyScoresEntered = filteredParticipants.some(p => calculateTotal(p.id) > 0);
+    const hasAnyScoresEntered = filteredParticipants.some(p => {
+        if (!scores[p.id]) return false;
+        return criteria.some(c => scores[p.id][c.id] !== undefined && scores[p.id][c.id] !== 0);
+    });
 
     if (loading) {
         return (
@@ -380,7 +419,25 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                                 >
                                     <td className="px-4 py-4 w-64 min-w-64">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shadow-sm flex-shrink-0 ${isDarkMode ? 'bg-gradient-to-br from-primary-500 to-accent-500' : 'bg-gradient-to-br from-maroon to-maroon-dark'}`}>
+                                            {participant.photo_url ? (
+                                                <img
+                                                    src={participant.photo_url}
+                                                    alt={participant.name}
+                                                    className="w-10 h-10 rounded-full object-cover border-2 shadow-sm flex-shrink-0"
+                                                    style={{ borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(128, 0, 0, 0.2)' }}
+                                                    onError={(e) => {
+                                                        // Hide image and show fallback
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.style.display = 'none';
+                                                        const parent = target.parentElement;
+                                                        if (parent) {
+                                                            const fallback = parent.querySelector('.avatar-fallback') as HTMLElement;
+                                                            if (fallback) fallback.style.display = 'flex';
+                                                        }
+                                                    }}
+                                                />
+                                            ) : null}
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shadow-sm flex-shrink-0 avatar-fallback ${participant.photo_url ? 'hidden' : ''} ${isDarkMode ? 'bg-gradient-to-br from-primary-500 to-accent-500' : 'bg-gradient-to-br from-maroon to-maroon-dark'}`}>
                                                 {participant.number || participant.name.charAt(0)}
                                             </div>
                                             <div className="min-w-0 flex-1">
@@ -396,9 +453,9 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                                                 min={0}
                                                 max={c.percentage}
                                                 step={0.5}
-                                                value={scores[participant.id]?.[c.id] || 0}
+                                                value={scores[participant.id]?.[c.id] !== undefined ? scores[participant.id][c.id] : ''}
                                                 onChange={(e) =>
-                                                    handleScoreChange(participant.id, c.id, parseFloat(e.target.value) || 0)
+                                                    handleScoreChange(participant.id, c.id, e.target.value)
                                                 }
                                                 onFocus={(e) => e.target.select()}
                                                 disabled={scores[participant.id]?.locked}
@@ -458,7 +515,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
             </div>
 
             {/* Auto-save indicator and Complete button */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pb-4 sm:pb-6 md:pb-8 lg:pb-10">
                 <div className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
                     {saving ? (
                         <span className="flex items-center gap-2">
@@ -481,7 +538,7 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
                                         judge_id: judgeId,
                                         participant_id: participant.id,
                                         criteria_id: c.id,
-                                        score: participantScores[c.id] || 0,
+                                        score: participantScores[c.id] ?? 0,
                                         submitted_at: new Date().toISOString()
                                     }));
                                     await supabase
@@ -503,6 +560,8 @@ const ScoringTabular = ({ categoryId, judgeId, onFinish, isDarkMode, eventPartic
             </div>
         </div>
     );
-};
+});
+
+ScoringTabular.displayName = 'ScoringTabular';
 
 export default ScoringTabular;
