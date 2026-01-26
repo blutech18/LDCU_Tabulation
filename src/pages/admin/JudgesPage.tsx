@@ -3,10 +3,12 @@ import { motion } from 'framer-motion';
 import { FaPlus, FaEdit, FaTrash, FaCopy, FaCheck, FaUserTie, FaImage, FaTimes } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import Modal from '../../components/common/Modal';
-import type { Judge } from '../../types';
+import type { Judge, Event } from '../../types';
 
 const JudgesPage = () => {
     const [judges, setJudges] = useState<Judge[]>([]);
+    const [events, setEvents] = useState<Event[]>([]);
+    const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editingJudge, setEditingJudge] = useState<Judge | null>(null);
@@ -19,18 +21,44 @@ const JudgesPage = () => {
     const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
-        fetchJudges();
+        fetchEvents();
     }, []);
 
+    useEffect(() => {
+        if (selectedEventId) {
+            fetchJudges();
+        } else {
+            setJudges([]);
+        }
+    }, [selectedEventId]);
+
+    const fetchEvents = async () => {
+        const { data, error } = await supabase
+            .from('events')
+            .select('*')
+            .order('date', { ascending: false });
+        if (!error && data) {
+            setEvents(data as Event[]);
+            // Auto-select first event if available
+            if (data.length > 0) {
+                setSelectedEventId(data[0].id);
+            }
+        }
+        setLoading(false);
+    };
+
     const fetchJudges = async () => {
+        if (!selectedEventId) return;
+
         const { data, error } = await supabase
             .from('judges')
             .select('*')
+            .eq('event_id', selectedEventId)
+            .eq('is_active', true)
             .order('name');
         if (!error && data) {
             setJudges(data as Judge[]);
         }
-        setLoading(false);
     };
 
     const generateCode = () => {
@@ -84,7 +112,7 @@ const JudgesPage = () => {
     };
 
     const handleAddJudge = async () => {
-        if (!judgeName.trim()) return;
+        if (!judgeName.trim() || !selectedEventId) return;
         setUploading(true);
 
         let photoUrl = null;
@@ -94,6 +122,7 @@ const JudgesPage = () => {
 
         const code = generateCode();
         const { error } = await supabase.from('judges').insert({
+            event_id: selectedEventId,
             name: judgeName,
             code,
             photo_url: photoUrl,
@@ -184,14 +213,47 @@ const JudgesPage = () => {
                     <h1 className="text-2xl font-bold text-gray-900">Judges</h1>
                     <p className="text-gray-500 mt-1">Manage your panel of judges</p>
                 </div>
-                <button onClick={openAddModal} className="btn-primary flex items-center gap-2">
+                <button
+                    onClick={openAddModal}
+                    className="btn-primary flex items-center gap-2"
+                    disabled={!selectedEventId}
+                >
                     <FaPlus className="w-4 h-4" />
                     Add Judge
                 </button>
             </div>
 
+            {/* Event Selector */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+                <label className="form-label">Select Event</label>
+                <select
+                    value={selectedEventId || ''}
+                    onChange={(e) => setSelectedEventId(e.target.value ? Number(e.target.value) : null)}
+                    className="form-input max-w-md"
+                >
+                    <option value="">-- Select an Event --</option>
+                    {events.map(event => (
+                        <option key={event.id} value={event.id}>{event.name}</option>
+                    ))}
+                </select>
+                {!selectedEventId && events.length > 0 && (
+                    <p className="text-sm text-amber-600 mt-2">⚠️ Please select an event to view and manage judges</p>
+                )}
+                {events.length === 0 && (
+                    <p className="text-sm text-gray-500 mt-2">No events found. Create an event first to add judges.</p>
+                )}
+            </div>
+
             {/* Judges Grid */}
-            {judges.length === 0 ? (
+            {!selectedEventId ? (
+                <div className="text-center py-16 bg-gray-50 rounded-xl">
+                    <div className="w-20 h-20 bg-maroon/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <FaUserTie className="w-10 h-10 text-maroon" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900">Select an Event</h3>
+                    <p className="text-gray-500 mt-1">Choose an event from the dropdown above to manage its judges</p>
+                </div>
+            ) : judges.length === 0 ? (
                 <div className="text-center py-16">
                     <div className="w-20 h-20 bg-maroon/10 rounded-full flex items-center justify-center mx-auto mb-4">
                         <FaUserTie className="w-10 h-10 text-maroon" />

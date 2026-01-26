@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import type { Judge } from '../types';
+import type { Judge, Auditor } from '../types';
 
 interface AuthState {
     // Admin auth (Supabase Auth)
@@ -11,9 +11,14 @@ interface AuthState {
     judge: Judge | null;
     isJudge: boolean;
 
+    // Auditor auth (localStorage)
+    auditor: Auditor | null;
+    isAuditor: boolean;
+
     // Actions
     setSession: (session: any) => void;
     setJudge: (judge: Judge | null) => void;
+    setAuditor: (auditor: Auditor | null) => void;
     logout: () => void;
     init: () => Promise<void>;
 }
@@ -23,6 +28,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     isAdmin: false,
     judge: null,
     isJudge: false,
+    auditor: null,
+    isAuditor: false,
 
     setSession: (session) => set({ session, isAdmin: !!session }),
 
@@ -35,13 +42,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ judge, isJudge: !!judge });
     },
 
+    setAuditor: (auditor) => {
+        if (auditor) {
+            localStorage.setItem('auditor', JSON.stringify(auditor));
+        } else {
+            localStorage.removeItem('auditor');
+        }
+        set({ auditor, isAuditor: !!auditor });
+    },
+
     logout: async () => {
         const { isAdmin } = get();
         if (isAdmin) {
             await supabase.auth.signOut();
         }
         localStorage.removeItem('judge');
-        set({ session: null, isAdmin: false, judge: null, isJudge: false });
+        localStorage.removeItem('auditor');
+        set({ session: null, isAdmin: false, judge: null, isJudge: false, auditor: null, isAuditor: false });
     },
 
     init: async () => {
@@ -52,11 +69,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const judgeData = localStorage.getItem('judge');
         const judge = judgeData ? JSON.parse(judgeData) : null;
 
+        // Check auditor in localStorage
+        const auditorData = localStorage.getItem('auditor');
+        const auditor = auditorData ? JSON.parse(auditorData) : null;
+
         set({
             session,
             isAdmin: !!session,
             judge,
             isJudge: !!judge,
+            auditor,
+            isAuditor: !!auditor,
         });
 
         // Listen for auth changes
@@ -65,3 +88,4 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
     },
 }));
+

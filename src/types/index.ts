@@ -73,6 +73,15 @@ export interface Judge {
     created_at: string;
 }
 
+export interface Auditor {
+    id: number;
+    event_id: number;
+    name: string;
+    code: string;
+    is_active: boolean;
+    created_at: string;
+}
+
 // ============================================================
 // SCORING
 // ============================================================

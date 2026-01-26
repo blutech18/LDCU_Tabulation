@@ -6,20 +6,26 @@ import { useAuthStore } from './stores';
 // Layouts
 import AdminLayout from './layouts/AdminLayout';
 import JudgeLayout from './layouts/JudgeLayout';
+import AuditorLayout from './layouts/AuditorLayout';
 
 // Pages
 import Login from './pages/Login';
 import JudgeLogin from './pages/JudgeLogin';
+import AuditorLogin from './pages/AuditorLogin';
 
 // Admin Pages
 import Dashboard from './pages/admin/Dashboard';
 import EventsPage from './pages/admin/EventsPage';
 import JudgesPage from './pages/admin/JudgesPage';
+import AuditorsPage from './pages/admin/AuditorsPage';
 
 // Judge Pages
 import JudgeLanding from './pages/judge/JudgeLanding';
 import TabularMode from './pages/judge/TabularMode';
 import Finished from './pages/judge/Finished';
+
+// Auditor Pages
+import AuditorResults from './pages/auditor/AuditorResults';
 
 const pageVariants = {
     initial: { opacity: 0, y: 10 },
@@ -85,6 +91,20 @@ function AppWrapper() {
                         </motion.div>
                     }
                 />
+                <Route
+                    path="/auditor/login"
+                    element={
+                        <motion.div
+                            initial="initial"
+                            animate="in"
+                            exit="out"
+                            variants={pageVariants}
+                            transition={pageTransition}
+                        >
+                            <AuditorLogin />
+                        </motion.div>
+                    }
+                />
 
                 {/* Admin Routes */}
                 <Route
@@ -96,6 +116,7 @@ function AppWrapper() {
                     <Route path="events" element={<EventsPage />} />
                     <Route path="events/:eventId" element={<EventsPage />} />
                     <Route path="judges" element={<JudgesPage />} />
+                    <Route path="auditors" element={<AuditorsPage />} />
                 </Route>
 
                 {/* Judge Routes */}
@@ -103,6 +124,11 @@ function AppWrapper() {
                     <Route path="panel" element={<JudgeLanding />} />
                     <Route path="tabular/:categoryId" element={<TabularMode />} />
                     <Route path="finished/:categoryId" element={<Finished />} />
+                </Route>
+
+                {/* Auditor Routes */}
+                <Route path="/auditor/*" element={<AuditorLayout />}>
+                    <Route path="results" element={<AuditorResults />} />
                 </Route>
 
                 {/* Default Route */}
@@ -137,3 +163,4 @@ function App() {
 }
 
 export default App;
+

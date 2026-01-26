@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FaHome, FaCalendarAlt, FaUserTie } from 'react-icons/fa';
+import { FaHome, FaCalendarAlt, FaUserTie, FaChartLine } from 'react-icons/fa';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -10,6 +10,7 @@ const menuItems = [
     { path: '/admin/dashboard', icon: FaHome, label: 'Dashboard' },
     { path: '/admin/events', icon: FaCalendarAlt, label: 'Events' },
     { path: '/admin/judges', icon: FaUserTie, label: 'Judges' },
+    { path: '/admin/auditors', icon: FaChartLine, label: 'Auditors' },
 ];
 
 const Sidebar = ({ isOpen }: SidebarProps) => {
