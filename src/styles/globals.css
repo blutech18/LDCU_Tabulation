@@ -159,13 +159,19 @@
     @apply border border-gray-300 rounded-lg;
     @apply focus:outline-none focus:ring-2;
     @apply placeholder:text-gray-400;
-    @apply transition-all duration-200;
+    @apply transition-all duration-300 ease-in-out;
     height: 42px;
   }
 
   .form-input:focus {
     border-color: #800000;
     --tw-ring-color: rgba(128, 0, 0, 0.3);
+    transform: scale(1.01);
+    box-shadow: 0 4px 12px rgba(128, 0, 0, 0.15);
+  }
+
+  .form-input:hover {
+    border-color: #a33333;
   }
 
   .form-label {
@@ -457,5 +463,147 @@
 
   [data-reorder-group] {
     contain: layout style paint;
+  }
+
+  /* ============================================
+     CUSTOM SLIDER STYLES - User-Friendly
+     ============================================ */
+  
+  /* Remove default styling */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none;
+  }
+
+  /* Slider Track - Light Mode */
+  input[type="range"].slider-light::-webkit-slider-track {
+    height: 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+
+  input[type="range"].slider-light::-moz-range-track {
+    height: 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+
+  /* Slider Track - Dark Mode */
+  input[type="range"].slider-dark::-webkit-slider-track {
+    height: 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  input[type="range"].slider-dark::-moz-range-track {
+    height: 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  /* Slider Thumb - Light Mode */
+  input[type="range"].slider-light::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #800000;
+    cursor: pointer;
+    border: 3px solid white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"].slider-light::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #800000;
+    cursor: pointer;
+    border: 3px solid white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  /* Slider Thumb - Dark Mode */
+  input[type="range"].slider-dark::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fbbf24;
+    cursor: pointer;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"].slider-dark::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fbbf24;
+    cursor: pointer;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: all 0.2s ease;
+  }
+
+  /* Hover Effects - Light Mode */
+  input[type="range"].slider-light::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(128, 0, 0, 0.4);
+  }
+
+  input[type="range"].slider-light::-moz-range-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(128, 0, 0, 0.4);
+  }
+
+  /* Hover Effects - Dark Mode */
+  input[type="range"].slider-dark::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.6);
+  }
+
+  input[type="range"].slider-dark::-moz-range-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.6);
+  }
+
+  /* Active/Pressed State - Light Mode */
+  input[type="range"].slider-light::-webkit-slider-thumb:active {
+    transform: scale(1.25);
+    box-shadow: 0 6px 16px rgba(128, 0, 0, 0.5);
+  }
+
+  input[type="range"].slider-light::-moz-range-thumb:active {
+    transform: scale(1.25);
+    box-shadow: 0 6px 16px rgba(128, 0, 0, 0.5);
+  }
+
+  /* Active/Pressed State - Dark Mode */
+  input[type="range"].slider-dark::-webkit-slider-thumb:active {
+    transform: scale(1.25);
+    box-shadow: 0 6px 16px rgba(251, 191, 36, 0.7);
+  }
+
+  input[type="range"].slider-dark::-moz-range-thumb:active {
+    transform: scale(1.25);
+    box-shadow: 0 6px 16px rgba(251, 191, 36, 0.7);
+  }
+
+  /* Disabled State */
+  input[type="range"]:disabled::-webkit-slider-thumb {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  input[type="range"]:disabled::-moz-range-thumb {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 }

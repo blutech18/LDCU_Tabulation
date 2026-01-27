@@ -393,14 +393,6 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                                     </th>
                                 ))}
                                 <th className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    <div className="flex flex-col items-center justify-center">
-                                        <div>Total</div>
-                                        <div className={`text-xs font-normal ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
-                                            100%
-                                        </div>
-                                    </div>
-                                </th>
-                                <th className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                     Rank
                                 </th>
                                 <th className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -446,27 +438,126 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                                             </div>
                                         </div>
                                     </td>
-                                    {criteria.map((c) => (
-                                        <td key={c.id} className="px-4 py-4 text-center align-middle">
+                                    <td colSpan={criteria.length} className="px-4 py-4 align-middle">
+                                        <div className="flex flex-col items-center gap-3 w-full">
+                                            {/* Editable Total Score Input */}
                                             <input
                                                 type="number"
                                                 min={0}
-                                                max={c.percentage}
+                                                max={100}
                                                 step={0.5}
-                                                value={scores[participant.id]?.[c.id] !== undefined ? scores[participant.id][c.id] : ''}
-                                                onChange={(e) =>
-                                                    handleScoreChange(participant.id, c.id, e.target.value)
-                                                }
+                                                value={calculateTotal(participant.id) || ''}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    
+                                                    if (scores[participant.id]?.locked) return;
+                                                    
+                                                    // Allow empty string
+                                                    if (value === '') {
+                                                        const newScores = { ...scores };
+                                                        if (!newScores[participant.id]) {
+                                                            newScores[participant.id] = {};
+                                                        }
+                                                        criteria.forEach((c) => {
+                                                            newScores[participant.id][c.id] = 0;
+                                                        });
+                                                        setScores(newScores);
+                                                        return;
+                                                    }
+                                                    
+                                                    const newTotal = parseFloat(value);
+                                                    if (isNaN(newTotal)) return;
+                                                    
+                                                    const clampedTotal = Math.min(Math.max(0, newTotal), 100);
+                                                    
+                                                    // Distribute the new total proportionally across criteria
+                                                    const newScores = { ...scores };
+                                                    if (!newScores[participant.id]) {
+                                                        newScores[participant.id] = {};
+                                                    }
+                                                    
+                                                    criteria.forEach((c) => {
+                                                        const proportion = c.percentage / 100;
+                                                        const newScore = clampedTotal * proportion;
+                                                        newScores[participant.id][c.id] = newScore;
+                                                    });
+                                                    
+                                                    setScores(newScores);
+                                                    
+                                                    // Save all criteria scores with debounce
+                                                    criteria.forEach((c) => {
+                                                        const key = `${participant.id}-${c.id}`;
+                                                        if (saveTimeoutRef.current[key]) {
+                                                            clearTimeout(saveTimeoutRef.current[key]);
+                                                        }
+                                                        saveTimeoutRef.current[key] = setTimeout(() => {
+                                                            const proportion = c.percentage / 100;
+                                                            const newScore = clampedTotal * proportion;
+                                                            saveScoreToDb(participant.id, c.id, newScore);
+                                                        }, 500);
+                                                    });
+                                                }}
                                                 onFocus={(e) => e.target.select()}
                                                 disabled={scores[participant.id]?.locked}
-                                                className={`w-20 px-3 py-2 rounded-lg text-center focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${isDarkMode ? 'bg-white/10 border border-white/20 text-white placeholder:text-white/30 focus:ring-primary-500' : 'bg-white border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:ring-maroon focus:border-maroon disabled:bg-gray-100'}`}
+                                                className={`w-32 px-4 py-2 text-3xl font-bold text-center rounded-lg border-2 transition-all focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed ${isDarkMode ? 'bg-white/10 border-white/20 text-white placeholder:text-white/30 focus:ring-primary-500 focus:border-primary-500' : 'bg-white border-gray-300 text-maroon placeholder:text-gray-400 focus:ring-maroon focus:border-maroon disabled:bg-gray-100'}`}
+                                                placeholder="0.0"
                                             />
-                                        </td>
-                                    ))}
-                                    <td className="px-4 py-4 text-center align-middle">
-                                        <span className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
-                                            {calculateTotal(participant.id).toFixed(1)}
-                                        </span>
+                                            {/* Single Slider for Total Score - Spans across all criteria */}
+                                            <div className="w-full px-8">
+                                                <input
+                                                    type="range"
+                                                    min={0}
+                                                    max={100}
+                                                    step={0.5}
+                                                    value={calculateTotal(participant.id)}
+                                                    onChange={(e) => {
+                                                        const newTotal = parseFloat(e.target.value);
+                                                        
+                                                        if (scores[participant.id]?.locked) return;
+                                                        
+                                                        // Distribute the new total proportionally across criteria
+                                                        const newScores = { ...scores };
+                                                        if (!newScores[participant.id]) {
+                                                            newScores[participant.id] = {};
+                                                        }
+                                                        
+                                                        // Calculate proportional distribution
+                                                        criteria.forEach((c) => {
+                                                            const proportion = c.percentage / 100;
+                                                            const newScore = newTotal * proportion;
+                                                            newScores[participant.id][c.id] = newScore;
+                                                        });
+                                                        
+                                                        setScores(newScores);
+                                                        
+                                                        // Save all criteria scores
+                                                        criteria.forEach((c) => {
+                                                            const key = `${participant.id}-${c.id}`;
+                                                            if (saveTimeoutRef.current[key]) {
+                                                                clearTimeout(saveTimeoutRef.current[key]);
+                                                            }
+                                                            saveTimeoutRef.current[key] = setTimeout(() => {
+                                                                const proportion = c.percentage / 100;
+                                                                const newScore = newTotal * proportion;
+                                                                saveScoreToDb(participant.id, c.id, newScore);
+                                                            }, 500);
+                                                        });
+                                                    }}
+                                                    disabled={scores[participant.id]?.locked}
+                                                    className={`w-full h-3 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed slider ${isDarkMode ? 'slider-dark' : 'slider-light'}`}
+                                                    style={{
+                                                        background: scores[participant.id]?.locked 
+                                                            ? isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+                                                            : `linear-gradient(to right, ${isDarkMode ? '#fbbf24' : '#800000'} 0%, ${isDarkMode ? '#fbbf24' : '#800000'} ${calculateTotal(participant.id)}%, ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'} ${calculateTotal(participant.id)}%, ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'} 100%)`
+                                                    }}
+                                                />
+                                                {/* Min/Max Labels */}
+                                                <div className={`flex justify-between w-full text-xs mt-1 ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
+                                                    <span>0</span>
+                                                    <span>100</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </td>
                                     <td className="px-4 py-4 text-center align-middle">
                                         {rankings[participant.id] === null ? (
