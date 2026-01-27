@@ -167,54 +167,6 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
         }
     }, [judgeId, scores]);
 
-    const handleScoreChange = (participantId: number, criteriaId: number, value: string) => {
-        if (scores[participantId]?.locked) return;
-        
-        // Allow empty string
-        if (value === '') {
-            setScores((prev) => ({
-                ...prev,
-                [participantId]: {
-                    ...prev[participantId],
-                    [criteriaId]: undefined,
-                },
-            }));
-
-            // Debounced auto-save with 0 for empty values
-            const key = `${participantId}-${criteriaId}`;
-            if (saveTimeoutRef.current[key]) {
-                clearTimeout(saveTimeoutRef.current[key]);
-            }
-            saveTimeoutRef.current[key] = setTimeout(() => {
-                saveScoreToDb(participantId, criteriaId, 0);
-            }, 500);
-            return;
-        }
-
-        const numValue = Number.parseFloat(value);
-        if (isNaN(numValue)) return;
-
-        const max = criteria.find((c) => c.id === criteriaId)?.percentage || 100;
-        const clampedValue = Math.min(Math.max(0, numValue), max);
-
-        setScores((prev) => ({
-            ...prev,
-            [participantId]: {
-                ...prev[participantId],
-                [criteriaId]: clampedValue,
-            },
-        }));
-
-        // Debounced auto-save
-        const key = `${participantId}-${criteriaId}`;
-        if (saveTimeoutRef.current[key]) {
-            clearTimeout(saveTimeoutRef.current[key]);
-        }
-        saveTimeoutRef.current[key] = setTimeout(() => {
-            saveScoreToDb(participantId, criteriaId, clampedValue);
-        }, 500);
-    };
-
     const handleLockParticipant = async (participantId: number) => {
         setSaving(true);
 
