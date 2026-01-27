@@ -321,108 +321,111 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
                     <div className="w-16 text-center">Position</div>
                 </div>
 
-                <Reorder.Group
-                    axis="y"
-                    values={filteredContestants}
-                    onReorder={handleReorder}
-                    className={isDarkMode ? 'divide-y divide-white/5' : 'divide-y divide-gray-100'}
-                >
-                    {filteredContestants.map((contestant, index) => (
-                        <Reorder.Item
-                            key={contestant.id}
-                            value={contestant}
-                            className="cursor-grab active:cursor-grabbing"
-                        >
-                            <motion.div
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.05 }}
-                                className={`flex items-center gap-8 p-4 ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}
+                {/* Scrollable Container with Custom Scrollbar */}
+                <div className={`overflow-y-auto max-h-[60vh] custom-scrollbar ${isDarkMode ? 'custom-scrollbar-dark' : 'custom-scrollbar-light'}`}>
+                    <Reorder.Group
+                        axis="y"
+                        values={filteredContestants}
+                        onReorder={handleReorder}
+                        className={isDarkMode ? 'divide-y divide-white/5' : 'divide-y divide-gray-100'}
+                    >
+                        {filteredContestants.map((contestant, index) => (
+                            <Reorder.Item
+                                key={contestant.id}
+                                value={contestant}
+                                className="cursor-grab active:cursor-grabbing"
                             >
-                                {/* Drag Handle */}
-                                <div className={isDarkMode ? 'text-white/30 hover:text-white/50' : 'text-gray-400 hover:text-gray-600'}>
-                                    <FaGripVertical className="w-4 h-4" />
-                                </div>
+                                <motion.div
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: index * 0.05 }}
+                                    className={`flex items-center gap-8 p-4 ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}
+                                >
+                                    {/* Drag Handle */}
+                                    <div className={isDarkMode ? 'text-white/30 hover:text-white/50' : 'text-gray-400 hover:text-gray-600'}>
+                                        <FaGripVertical className="w-4 h-4" />
+                                    </div>
 
-                                {/* Editable Rank Input */}
-                                <div className="flex-shrink-0 mr-8">
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        max={filteredContestants.length}
-                                        defaultValue={index + 1}
-                                        key={`${contestant.id}-${index}`}
-                                        onBlur={(e) => {
-                                            const newRank = parseInt(e.target.value);
-                                            if (newRank && newRank >= 1 && newRank <= filteredContestants.length && newRank !== index + 1) {
-                                                handleRankChange(contestant.id, newRank);
-                                            } else {
-                                                e.target.value = String(index + 1);
-                                            }
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                (e.target as HTMLInputElement).blur();
-                                            }
-                                        }}
-                                        onFocus={(e) => e.target.select()}
-                                        className={`w-14 h-10 text-center font-bold text-lg rounded-lg border-2 transition-all focus:outline-none focus:ring-2 ${
-                                            index === 0
-                                                ? isDarkMode 
-                                                    ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 focus:ring-yellow-500/50' 
-                                                    : 'bg-yellow-50 border-yellow-300 text-yellow-700 focus:ring-yellow-400'
-                                                : index === 1
+                                    {/* Editable Rank Input */}
+                                    <div className="flex-shrink-0 mr-8">
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={filteredContestants.length}
+                                            defaultValue={index + 1}
+                                            key={`${contestant.id}-${index}`}
+                                            onBlur={(e) => {
+                                                const newRank = parseInt(e.target.value);
+                                                if (newRank && newRank >= 1 && newRank <= filteredContestants.length && newRank !== index + 1) {
+                                                    handleRankChange(contestant.id, newRank);
+                                                } else {
+                                                    e.target.value = String(index + 1);
+                                                }
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    (e.target as HTMLInputElement).blur();
+                                                }
+                                            }}
+                                            onFocus={(e) => e.target.select()}
+                                            className={`w-14 h-10 text-center font-bold text-lg rounded-lg border-2 transition-all focus:outline-none focus:ring-2 ${
+                                                index === 0
                                                     ? isDarkMode 
-                                                        ? 'bg-gray-400/20 border-gray-400/50 text-gray-300 focus:ring-gray-400/50' 
-                                                        : 'bg-gray-100 border-gray-300 text-gray-700 focus:ring-gray-400'
-                                                    : index === 2
+                                                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 focus:ring-yellow-500/50' 
+                                                        : 'bg-yellow-50 border-yellow-300 text-yellow-700 focus:ring-yellow-400'
+                                                    : index === 1
                                                         ? isDarkMode 
-                                                            ? 'bg-amber-600/20 border-amber-500/50 text-amber-300 focus:ring-amber-500/50' 
-                                                            : 'bg-amber-50 border-amber-300 text-amber-700 focus:ring-amber-400'
-                                                        : isDarkMode 
-                                                            ? 'bg-white/10 border-white/20 text-white focus:ring-white/30' 
-                                                            : 'bg-gray-50 border-gray-200 text-gray-700 focus:ring-maroon/30'
-                                        }`}
-                                    />
-                                </div>
+                                                            ? 'bg-gray-400/20 border-gray-400/50 text-gray-300 focus:ring-gray-400/50' 
+                                                            : 'bg-gray-100 border-gray-300 text-gray-700 focus:ring-gray-400'
+                                                        : index === 2
+                                                            ? isDarkMode 
+                                                                ? 'bg-amber-600/20 border-amber-500/50 text-amber-300 focus:ring-amber-500/50' 
+                                                                : 'bg-amber-50 border-amber-300 text-amber-700 focus:ring-amber-400'
+                                                            : isDarkMode 
+                                                                ? 'bg-white/10 border-white/20 text-white focus:ring-white/30' 
+                                                                : 'bg-gray-50 border-gray-200 text-gray-700 focus:ring-maroon/30'
+                                            }`}
+                                        />
+                                    </div>
 
-                                {/* Contestant Info */}
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-3">
-                                        {contestant.photo_url ? (
-                                            <img 
-                                                src={contestant.photo_url} 
-                                                alt={contestant.name}
-                                                className="w-10 h-10 rounded-full object-cover shadow-sm"
-                                            />
-                                        ) : (
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shadow-sm ${isDarkMode ? 'bg-gradient-to-br from-primary-500 to-accent-500' : 'bg-gradient-to-br from-maroon to-maroon-dark'}`}>
-                                                {contestant.name.charAt(0)}
+                                    {/* Contestant Info */}
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-3">
+                                            {contestant.photo_url ? (
+                                                <img 
+                                                    src={contestant.photo_url} 
+                                                    alt={contestant.name}
+                                                    className="w-10 h-10 rounded-full object-cover shadow-sm"
+                                                />
+                                            ) : (
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shadow-sm ${isDarkMode ? 'bg-gradient-to-br from-primary-500 to-accent-500' : 'bg-gradient-to-br from-maroon to-maroon-dark'}`}>
+                                                    {contestant.name.charAt(0)}
+                                                </div>
+                                            )}
+                                            <div>
+                                                <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{contestant.name}</p>
+                                                <p className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>{contestant.department}</p>
                                             </div>
-                                        )}
-                                        <div>
-                                            <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{contestant.name}</p>
-                                            <p className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>{contestant.department}</p>
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Ordinal Rank Display */}
-                                <div className={`w-16 text-center font-semibold text-sm ${
-                                    index === 0
-                                        ? isDarkMode ? 'text-yellow-300' : 'text-yellow-600'
-                                        : index === 1
-                                            ? isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                                            : index === 2
-                                                ? isDarkMode ? 'text-amber-300' : 'text-amber-600'
-                                                : isDarkMode ? 'text-white/50' : 'text-gray-500'
-                                }`}>
-                                    {getOrdinal(index + 1)}
-                                </div>
-                            </motion.div>
-                        </Reorder.Item>
-                    ))}
-                </Reorder.Group>
+                                    {/* Ordinal Rank Display */}
+                                    <div className={`w-16 text-center font-semibold text-sm ${
+                                        index === 0
+                                            ? isDarkMode ? 'text-yellow-300' : 'text-yellow-600'
+                                            : index === 1
+                                                ? isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                                                : index === 2
+                                                    ? isDarkMode ? 'text-amber-300' : 'text-amber-600'
+                                                    : isDarkMode ? 'text-white/50' : 'text-gray-500'
+                                    }`}>
+                                        {getOrdinal(index + 1)}
+                                    </div>
+                                </motion.div>
+                            </Reorder.Item>
+                        ))}
+                    </Reorder.Group>
+                </div>
             </div>
 
             {/* Auto-save indicator and Complete button */}

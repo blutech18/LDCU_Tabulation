@@ -606,4 +606,48 @@
     cursor: not-allowed;
     opacity: 0.5;
   }
+  
+  /* ============================================
+     CUSTOM SCROLLBAR STYLES
+     ============================================ */
+  
+  /* Light Mode Scrollbar */
+  .custom-scrollbar-light::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar-light::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar-light::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar-light::-webkit-scrollbar-thumb:hover {
+    background: rgba(128, 0, 0, 0.5);
+  }
+
+  /* Dark Mode Scrollbar */
+  .custom-scrollbar-dark::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.4);
+  }
 }
