@@ -21,6 +21,7 @@ export interface Event {
     participant_type: 'individual' | 'group';
     status: 'draft' | 'ongoing' | 'completed';
     auditor_detailed_view?: boolean;
+    top_display_limit?: number | null; // null or 0 = show all, 3-10 = show only top N results
     created_at: string;
 }
 

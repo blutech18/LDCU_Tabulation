@@ -3047,7 +3047,53 @@ const ScoresTab = ({ event }: { event: Event }) => {
         const criteria = criteriaMap[selectedCategory] || [];
         const filteredParticipants = getFilteredParticipants();
 
-        // Get scores for this judge and category's criteria
+        // Check if this category is ranking-based
+        const category = categories.find(c => c.id === selectedCategory);
+        const isRankingBased = category?.tabular_type === 'ranking';
+
+        if (isRankingBased) {
+            // For ranking-based categories, use the rank column from scores
+            // Note: For ranking categories, judges assign ranks directly (1, 2, 3, etc.)
+            // The rank is stored in the 'rank' column, and score is 0
+
+            const participantRanks = filteredParticipants.map(participant => {
+                // For ranking categories, get the rank for each criteria
+                const criteriaRanks: Record<number, number | null> = {};
+
+                criteria.forEach((c: any) => {
+                    const scoreEntry = scores.find(
+                        s => s.judge_id === selectedJudge &&
+                            s.participant_id === participant.id &&
+                            s.criteria_id === c.id
+                    );
+                    criteriaRanks[c.id] = scoreEntry?.rank ?? null;
+                });
+
+                // Use the first criteria's rank as the overall rank (for ranking categories, all criteria typically have the same rank)
+                const firstCriteria = criteria[0];
+                const rank = criteriaRanks[firstCriteria?.id] ?? null;
+
+                return {
+                    participant,
+                    criteriaScores: {}, // Not used for ranking
+                    criteriaRanks,
+                    total: 0, // Not used for ranking
+                    rank
+                };
+            });
+
+            // Sort by rank (ascending - lower rank is better)
+            const sorted = [...participantRanks].sort((a, b) => {
+                if (a.rank === null && b.rank === null) return 0;
+                if (a.rank === null) return 1;
+                if (b.rank === null) return -1;
+                return a.rank - b.rank;
+            });
+
+            return { criteria, participants: sorted, isRankingBased: true };
+        }
+
+        // Get scores for this judge and category's criteria (scoring-based)
         const participantScores = filteredParticipants.map(participant => {
             const criteriaScores: Record<number, number> = {};
             let total = 0;
@@ -3077,9 +3123,9 @@ const ScoresTab = ({ event }: { event: Event }) => {
             const scoresForCriteria = participantScores
                 .map(ps => ({ participantId: ps.participant.id, score: ps.criteriaScores[c.id] || 0 }))
                 .sort((a, b) => b.score - a.score);
-            
+
             const hasScoresForCriteria = scoresForCriteria.some(s => s.score > 0);
-            
+
             criteriaRankings[c.id] = {};
             scoresForCriteria.forEach((item, index) => {
                 let rank: number | null = null;
@@ -3122,7 +3168,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
             return { ...item, rank, criteriaRanks };
         });
 
-        return { criteria, participants: ranked };
+        return { criteria, participants: ranked, isRankingBased: false };
     };
 
     // ==================== TABLE 2: Scores by Judge / Average Judge Scores ====================
@@ -3135,16 +3181,88 @@ const ScoresTab = ({ event }: { event: Event }) => {
         const criteria = criteriaMap[selectedCriteriaForTable2] || [];
         const filteredParticipants = getFilteredParticipants();
 
+        // Check if this category is ranking-based - case insensitive check safely
+        const isRankingBased = (category.tabular_type || '').toLowerCase() === 'ranking';
+
         // Get assigned judges for this category
-        // For simplicity, we'll show all judges who have scores in this category
         const judgesWithScores = judges.filter(judge => {
-            return scores.some(s =>
-                s.judge_id === judge.id &&
-                criteria.some((c: any) => c.id === s.criteria_id)
-            );
+            if (isRankingBased) {
+                // For ranking, only check the first criteria since ranking is per-category
+                const firstCriteria = criteria[0];
+                if (!firstCriteria) return false;
+                return scores.some(s =>
+                    s.judge_id === judge.id &&
+                    s.criteria_id === firstCriteria.id &&
+                    s.rank !== null // Ensure there is a rank
+                );
+            } else {
+                return scores.some(s =>
+                    s.judge_id === judge.id &&
+                    criteria.some((c: any) => c.id === s.criteria_id)
+                );
+            }
         });
 
-        // Calculate each participant's total and rank per judge
+        if (isRankingBased) {
+            // For ranking-based categories, directly use the rank column from scores
+            const participantData = filteredParticipants.map(participant => {
+                const judgeRanks: Record<number, { total: number; rank: number | null }> = {};
+
+                judgesWithScores.forEach(judge => {
+                    // For ranking categories, get the rank directly from the first criteria
+                    const firstCriteria = criteria[0];
+                    const scoreEntry = firstCriteria ? scores.find(
+                        s => s.judge_id === judge.id &&
+                            s.participant_id === participant.id &&
+                            s.criteria_id === firstCriteria.id
+                    ) : null;
+
+                    const rank = scoreEntry?.rank ?? null;
+                    judgeRanks[judge.id] = { total: 0, rank };
+                });
+
+                return { participant, judgeRanks };
+            });
+
+            // Calculate sum and results for each participant (Sum of Ranks ÷ Number of Judges)
+            const participantsWithAvg = participantData.map(p => {
+                const ranks = Object.values(p.judgeRanks)
+                    .map(jr => jr.rank)
+                    .filter((r): r is number => r !== null);
+                const sumRanks = ranks.reduce((a, b) => a + b, 0);
+                const judgeCount = ranks.length;
+                const results = judgeCount > 0 ? sumRanks / judgeCount : null;
+                return { ...p, sumRanks, judgeCount, results };
+            });
+
+            // Sort by results (lower mean rank is better)
+            const sorted = [...participantsWithAvg].sort((a, b) => {
+                if (a.results === null && b.results === null) return 0;
+                if (a.results === null) return 1;
+                if (b.results === null) return -1;
+                return a.results - b.results;
+            });
+
+            // Assign final ranks
+            const ranked = sorted.map((item, index) => {
+                let finalRank: number | null = null;
+                if (item.results !== null) {
+                    if (index === 0) {
+                        finalRank = 1;
+                    } else if (item.results === sorted[index - 1].results) {
+                        const firstWithSameResults = sorted.findIndex(s => s.results === item.results);
+                        finalRank = firstWithSameResults + 1;
+                    } else {
+                        finalRank = index + 1;
+                    }
+                }
+                return { ...item, finalRank };
+            });
+
+            return { judges: judgesWithScores, participants: ranked, category, isRankingBased: true };
+        }
+
+        // For scoring-based categories, calculate ranks from scores
         const participantData = filteredParticipants.map(participant => {
             const judgeRanks: Record<number, { total: number; rank: number | null }> = {};
 
@@ -3164,7 +3282,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
             return { participant, judgeRanks };
         });
 
-        // Calculate ranks per judge
+        // Calculate ranks per judge (based on total scores)
         judgesWithScores.forEach(judge => {
             const participantsForJudge = participantData
                 .map(p => ({ id: p.participant.id, total: p.judgeRanks[judge.id]?.total ?? 0 }))
@@ -3224,7 +3342,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
             return { ...item, finalRank };
         });
 
-        return { judges: judgesWithScores, participants: ranked, category };
+        return { judges: judgesWithScores, participants: ranked, category, isRankingBased: false };
     };
 
     // ==================== TABLE 3: Average Ranks (Final Results) ====================
@@ -3244,53 +3362,107 @@ const ScoresTab = ({ event }: { event: Event }) => {
             const criteria = criteriaMap[category.id] || [];
             if (criteria.length === 0) return;
 
-            // Calculate average total across all judges for each participant
-            const participantTotals = filteredParticipants.map(participant => {
-                let totalSum = 0;
-                let judgeCount = 0;
+            // Check if ranking based - case insensitive safe check
+            const isRankingBased = (category.tabular_type || '').toLowerCase() === 'ranking';
 
-                judges.forEach(judge => {
-                    let hasScore = false;
-                    let judgeTotal = 0;
-                    criteria.forEach((c: any) => {
-                        const score = scores.find(
+            if (isRankingBased) {
+                // For ranking-based categories: average the ranks across all judges
+                const participantRankData = filteredParticipants.map(participant => {
+                    const firstCriteria = criteria[0];
+                    let totalRank = 0;
+                    let judgeCount = 0;
+
+                    judges.forEach(judge => {
+                        const scoreEntry = scores.find(
                             s => s.judge_id === judge.id &&
                                 s.participant_id === participant.id &&
-                                s.criteria_id === c.id
+                                s.criteria_id === firstCriteria.id
                         );
-                        if (score && score.score > 0) {
-                            hasScore = true;
-                            judgeTotal += score.score;
+                        if (scoreEntry?.rank !== null && scoreEntry?.rank !== undefined) {
+                            totalRank += scoreEntry.rank;
+                            judgeCount++;
                         }
                     });
-                    if (hasScore) {
-                        totalSum += judgeTotal;
-                        judgeCount++;
-                    }
+
+                    const avgRank = judgeCount > 0 ? totalRank / judgeCount : null;
+                    return { participant, avgRank };
                 });
 
-                const avgTotal = judgeCount > 0 ? totalSum / judgeCount : 0;
-                return { participant, avgTotal };
-            });
+                // Sort by average rank (ascending)
+                const sorted = [...participantRankData].sort((a, b) => {
+                    if (a.avgRank === null && b.avgRank === null) return 0;
+                    if (a.avgRank === null) return 1;
+                    if (b.avgRank === null) return -1;
+                    return a.avgRank - b.avgRank;
+                });
 
-            // Sort and assign ranks for this category
-            const sorted = [...participantTotals].sort((a, b) => b.avgTotal - a.avgTotal);
-            const hasScores = sorted.some(p => p.avgTotal > 0);
+                const hasRanks = sorted.some(p => p.avgRank !== null);
 
-            sorted.forEach((item, index) => {
-                let rank: number | null = null;
-                if (hasScores && item.avgTotal > 0) {
-                    if (index === 0) {
-                        rank = 1;
-                    } else if (item.avgTotal === sorted[index - 1].avgTotal) {
-                        const firstWithSameScore = sorted.findIndex(s => s.avgTotal === item.avgTotal);
-                        rank = firstWithSameScore + 1;
-                    } else {
-                        rank = index + 1;
+                sorted.forEach((item, index) => {
+                    let rank: number | null = null;
+                    if (hasRanks && item.avgRank !== null) {
+                        if (index === 0) {
+                            rank = 1;
+                        } else if (item.avgRank === sorted[index - 1].avgRank) {
+                            const firstWithSameRank = sorted.findIndex(s => s.avgRank === item.avgRank);
+                            rank = firstWithSameRank + 1;
+                        } else {
+                            rank = index + 1;
+                        }
                     }
-                }
-                participantCategoryRanks[item.participant.id][category.id] = rank;
-            });
+                    participantCategoryRanks[item.participant.id][category.id] = rank;
+                });
+
+            } else {
+                // Scoring-based logic
+                // Calculate average total across all judges for each participant
+                const participantTotals = filteredParticipants.map(participant => {
+                    let totalSum = 0;
+                    let judgeCount = 0;
+
+                    judges.forEach(judge => {
+                        let hasScore = false;
+                        let judgeTotal = 0;
+                        criteria.forEach((c: any) => {
+                            const score = scores.find(
+                                s => s.judge_id === judge.id &&
+                                    s.participant_id === participant.id &&
+                                    s.criteria_id === c.id
+                            );
+                            if (score && score.score > 0) {
+                                hasScore = true;
+                                judgeTotal += score.score;
+                            }
+                        });
+                        if (hasScore) {
+                            totalSum += judgeTotal;
+                            judgeCount++;
+                        }
+                    });
+
+                    const avgTotal = judgeCount > 0 ? totalSum / judgeCount : 0;
+                    return { participant, avgTotal };
+                });
+
+                // Sort and assign ranks for this category
+                const sorted = [...participantTotals].sort((a, b) => b.avgTotal - a.avgTotal);
+                const hasScores = sorted.some(p => p.avgTotal > 0);
+
+                sorted.forEach((item, index) => {
+                    let rank: number | null = null;
+                    if (hasScores && item.avgTotal > 0) {
+                        if (index === 0) {
+                            rank = 1;
+                        } else if (item.avgTotal === sorted[index - 1].avgTotal) {
+                            const firstWithSameScore = sorted.findIndex(s => s.avgTotal === item.avgTotal);
+                            rank = firstWithSameScore + 1;
+                        } else {
+                            rank = index + 1;
+                        }
+                    }
+                    participantCategoryRanks[item.participant.id][category.id] = rank;
+                });
+            }
         });
 
         // Calculate final average rank
@@ -3352,31 +3524,28 @@ const ScoresTab = ({ event }: { event: Event }) => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                     <button
                         onClick={() => setActiveScoreTab('judge-scores')}
-                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
-                            activeScoreTab === 'judge-scores'
-                                ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
-                                : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
-                        }`}
+                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${activeScoreTab === 'judge-scores'
+                            ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                            : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                            }`}
                     >
                         Judge Scores by Criteria
                     </button>
                     <button
                         onClick={() => setActiveScoreTab('average-scores')}
-                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
-                            activeScoreTab === 'average-scores'
-                                ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
-                                : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
-                        }`}
+                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${activeScoreTab === 'average-scores'
+                            ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                            : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                            }`}
                     >
                         Average Judge Scores
                     </button>
                     <button
                         onClick={() => setActiveScoreTab('final-results')}
-                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
-                            activeScoreTab === 'final-results'
-                                ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
-                                : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
-                        }`}
+                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${activeScoreTab === 'final-results'
+                            ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                            : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                            }`}
                     >
                         Average Ranks - Final Results
                     </button>
@@ -3389,22 +3558,20 @@ const ScoresTab = ({ event }: { event: Event }) => {
                     <div className="flex gap-1.5">
                         <button
                             onClick={() => setSelectedGender('male')}
-                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${
-                                selectedGender === 'male'
-                                    ? 'bg-white text-blue-600 shadow-md ring-1 ring-black/5'
-                                    : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
-                            }`}
+                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${selectedGender === 'male'
+                                ? 'bg-white text-blue-600 shadow-md ring-1 ring-black/5'
+                                : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                                }`}
                         >
                             <FaMars className="w-4 h-4" />
                             Male
                         </button>
                         <button
                             onClick={() => setSelectedGender('female')}
-                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${
-                                selectedGender === 'female'
-                                    ? 'bg-white text-pink-600 shadow-md ring-1 ring-black/5'
-                                    : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
-                            }`}
+                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${selectedGender === 'female'
+                                ? 'bg-white text-pink-600 shadow-md ring-1 ring-black/5'
+                                : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                                }`}
                         >
                             <FaVenus className="w-4 h-4" />
                             Female
@@ -3463,77 +3630,146 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                 {/* Table */}
                                 {table1Data ? (
                                     <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse">
-                                            <thead>
-                                                <tr className="bg-gray-50">
-                                                    <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
-                                                        Participant
-                                                    </th>
-                                                    {table1Data.criteria.map((c: any) => (
-                                                        <th key={c.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
-                                                            <div>{c.name}</div>
-                                                            <div className="text-xs font-normal text-gray-500">
-                                                                {c.percentage > 0 ? `${c.percentage}%` : ''}
-                                                                {c.min_score && c.max_score && (
-                                                                    <div className="mt-0.5">{c.min_score}-{c.max_score}</div>
-                                                                )}
-                                                            </div>
+                                        {table1Data.isRankingBased ? (
+                                            /* Ranking-based category table */
+                                            <table className="w-full border-collapse">
+                                                <thead>
+                                                    <tr className="bg-gray-50">
+                                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                            Participant
                                                         </th>
-                                                    ))}
-                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-maroon/10">
-                                                        Total
-                                                    </th>
-                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
-                                                        Rank
-                                                    </th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {table1Data.participants.map((item, index) => (
-                                                    <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                        <td className="border border-gray-200 px-4 py-3">
-                                                            <div className="flex items-center gap-3">
-                                                                {item.participant.photo_url ? (
-                                                                    <img
-                                                                        src={item.participant.photo_url}
-                                                                        alt={item.participant.name}
-                                                                        className="w-8 h-8 rounded-full object-cover"
-                                                                    />
-                                                                ) : (
-                                                                    <div className="w-8 h-8 rounded-full bg-maroon flex items-center justify-center text-white text-sm font-bold">
-                                                                        {item.participant.name.charAt(0)}
-                                                                    </div>
-                                                                )}
-                                                                <div>
-                                                                    <p className="font-medium text-gray-900">{item.participant.name}</p>
-                                                                    <p className="text-sm text-gray-500">{item.participant.department}</p>
-                                                                </div>
-                                                            </div>
-                                                        </td>
                                                         {table1Data.criteria.map((c: any) => (
-                                                            <td key={c.id} className="border border-gray-200 px-4 py-3 text-center text-gray-400">
-                                                                —
-                                                            </td>
+                                                            <th key={c.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                                <div>{c.name}</div>
+                                                                <div className="text-xs font-normal text-gray-500">
+                                                                    {c.min_score && c.max_score && (
+                                                                        <span>{c.min_score}-{c.max_score}</span>
+                                                                    )}
+                                                                </div>
+                                                            </th>
                                                         ))}
-                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-maroon bg-maroon/5">
-                                                            {item.total.toFixed(1)}
-                                                        </td>
-                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
-                                                            {item.rank !== null ? (
-                                                                <span className={
-                                                                    item.rank === 1 ? 'text-yellow-600' :
-                                                                        item.rank === 2 ? 'text-gray-500' :
-                                                                            item.rank === 3 ? 'text-amber-600' :
-                                                                                'text-gray-600'
-                                                                }>
-                                                                    {getOrdinal(item.rank)}
-                                                                </span>
-                                                            ) : '—'}
-                                                        </td>
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                            Overall Rank
+                                                        </th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody>
+                                                    {table1Data.participants.map((item: any, index: number) => (
+                                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                            <td className="border border-gray-200 px-4 py-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    {item.participant.photo_url ? (
+                                                                        <img
+                                                                            src={item.participant.photo_url}
+                                                                            alt={item.participant.name}
+                                                                            className="w-8 h-8 rounded-full object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="w-8 h-8 rounded-full bg-maroon flex items-center justify-center text-white text-sm font-bold">
+                                                                            {item.participant.name.charAt(0)}
+                                                                        </div>
+                                                                    )}
+                                                                    <div>
+                                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            {table1Data.criteria.map((c: any) => (
+                                                                <td key={c.id} className="border border-gray-200 px-4 py-3 text-center text-gray-400">
+                                                                    —
+                                                                </td>
+                                                            ))}
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                                {item.rank !== null ? (
+                                                                    <span className={
+                                                                        item.rank === 1 ? 'text-yellow-600' :
+                                                                            item.rank === 2 ? 'text-gray-500' :
+                                                                                item.rank === 3 ? 'text-amber-600' :
+                                                                                    'text-gray-600'
+                                                                    }>
+                                                                        {getOrdinal(item.rank)}
+                                                                    </span>
+                                                                ) : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            /* Scoring-based category table */
+                                            <table className="w-full border-collapse">
+                                                <thead>
+                                                    <tr className="bg-gray-50">
+                                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                            Participant
+                                                        </th>
+                                                        {table1Data.criteria.map((c: any) => (
+                                                            <th key={c.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                                <div>{c.name}</div>
+                                                                <div className="text-xs font-normal text-gray-500">
+                                                                    {c.percentage > 0 ? `${c.percentage}%` : ''}
+                                                                    {c.min_score && c.max_score && (
+                                                                        <div className="mt-0.5">{c.min_score}-{c.max_score}</div>
+                                                                    )}
+                                                                </div>
+                                                            </th>
+                                                        ))}
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-maroon/10">
+                                                            Total
+                                                        </th>
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                            Rank
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {table1Data.participants.map((item: any, index: number) => (
+                                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                            <td className="border border-gray-200 px-4 py-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    {item.participant.photo_url ? (
+                                                                        <img
+                                                                            src={item.participant.photo_url}
+                                                                            alt={item.participant.name}
+                                                                            className="w-8 h-8 rounded-full object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="w-8 h-8 rounded-full bg-maroon flex items-center justify-center text-white text-sm font-bold">
+                                                                            {item.participant.name.charAt(0)}
+                                                                        </div>
+                                                                    )}
+                                                                    <div>
+                                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            {table1Data.criteria.map((c: any) => (
+                                                                <td key={c.id} className="border border-gray-200 px-4 py-3 text-center text-gray-400">
+                                                                    —
+                                                                </td>
+                                                            ))}
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-maroon bg-maroon/5">
+                                                                {item.total > 0 ? item.total.toFixed(1) : '—'}
+                                                            </td>
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                                {item.rank !== null ? (
+                                                                    <span className={
+                                                                        item.rank === 1 ? 'text-yellow-600' :
+                                                                            item.rank === 2 ? 'text-gray-500' :
+                                                                                item.rank === 3 ? 'text-amber-600' :
+                                                                                    'text-gray-600'
+                                                                    }>
+                                                                        {getOrdinal(item.rank)}
+                                                                    </span>
+                                                                ) : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="text-center py-8 text-gray-500">
@@ -3542,259 +3778,285 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                 )}
                             </div>
                         </div>
-                    </motion.div>
+                    </motion.div >
                 )}
 
-                {activeScoreTab === 'average-scores' && (
-                    <motion.div
-                        key="average-scores"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        transition={{ duration: 0.3 }}
-                    >
-                        {/* TABLE 2: Scores by Judge */}
-                        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                            <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
-                                <h3 className="text-lg font-semibold text-white">2. Scores by Judge / Average Judge Scores</h3>
-                                <p className="text-white/70 text-sm mt-1">View rankings from each judge and the average</p>
-                            </div>
-                            <div className="p-6">
-                                {/* Filter */}
-                                <div className="mb-6">
-                                    <label className="form-label">Select Category</label>
-                                    <select
-                                        value={selectedCriteriaForTable2 || ''}
-                                        onChange={(e) => setSelectedCriteriaForTable2(e.target.value ? Number(e.target.value) : null)}
-                                        className="form-input max-w-md"
-                                    >
-                                        <option value="">-- Select a Category --</option>
-                                        {categories.map(category => (
-                                            <option key={category.id} value={category.id}>{category.name}</option>
-                                        ))}
-                                    </select>
+                {
+                    activeScoreTab === 'average-scores' && (
+                        <motion.div
+                            key="average-scores"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            {/* TABLE 2: Scores by Judge */}
+                            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
+                                    <h3 className="text-lg font-semibold text-white">
+                                        2. Scores by Judge / Average Judge Scores
+                                        {table2Data?.isRankingBased && <span className="ml-2 text-yellow-300 text-sm">(Ranking Mode)</span>}
+                                    </h3>
+                                    <p className="text-white/70 text-sm mt-1">View rankings from each judge and the average</p>
                                 </div>
+                                <div className="p-6">
+                                    {/* Filter */}
+                                    <div className="mb-6">
+                                        <label className="form-label">Select Category</label>
+                                        <select
+                                            value={selectedCriteriaForTable2 || ''}
+                                            onChange={(e) => setSelectedCriteriaForTable2(e.target.value ? Number(e.target.value) : null)}
+                                            className="form-input max-w-md"
+                                        >
+                                            <option value="">-- Select a Category --</option>
+                                            {categories.map(category => (
+                                                <option key={category.id} value={category.id}>{category.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
-                                {/* Table */}
-                                {table2Data ? (
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse">
-                                            <thead>
-                                                <tr className="bg-gray-50">
-                                                    <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
-                                                        Participant
-                                                    </th>
-                                                    {table2Data.judges.map((judge) => (
-                                                        <th key={judge.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
-                                                            {judge.name}
+                                    {/* Table */}
+                                    {table2Data ? (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse">
+                                                <thead>
+                                                    <tr className="bg-gray-50">
+                                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                            Participant
                                                         </th>
-                                                    ))}
-                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
-                                                        Sum
-                                                    </th>
-                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-purple-50">
-                                                        <div>Results</div>
-                                                        <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
-                                                    </th>
-                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
-                                                        Final Rank
-                                                    </th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {table2Data.participants.map((item, index) => (
-                                                    <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                        <td className="border border-gray-200 px-4 py-3">
-                                                            <div className="flex items-center gap-3">
-                                                                {item.participant.photo_url ? (
-                                                                    <img
-                                                                        src={item.participant.photo_url}
-                                                                        alt={item.participant.name}
-                                                                        className="w-8 h-8 rounded-full object-cover"
-                                                                    />
-                                                                ) : (
-                                                                    <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
-                                                                        {item.participant.name.charAt(0)}
-                                                                    </div>
-                                                                )}
-                                                                <div>
-                                                                    <p className="font-medium text-gray-900">{item.participant.name}</p>
-                                                                    <p className="text-sm text-gray-500">{item.participant.department}</p>
-                                                                </div>
-                                                            </div>
-                                                        </td>
                                                         {table2Data.judges.map((judge) => (
-                                                            <td key={judge.id} className="border border-gray-200 px-4 py-3 text-center">
-                                                                {item.judgeRanks[judge.id]?.rank !== null ? (
-                                                                    <span className="font-medium">{item.judgeRanks[judge.id].rank}</span>
-                                                                ) : '—'}
-                                                            </td>
+                                                            <th key={judge.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                                {judge.name}
+                                                            </th>
                                                         ))}
-                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
-                                                            {item.judgeCount > 0 ? item.sumRanks : '—'}
-                                                        </td>
-                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-purple-700 bg-purple-50">
-                                                            {item.results !== null ? item.results.toFixed(2) : '—'}
-                                                        </td>
-                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
-                                                            {item.finalRank !== null ? (
-                                                                <span className={
-                                                                    item.finalRank === 1 ? 'text-yellow-600' :
-                                                                        item.finalRank === 2 ? 'text-gray-500' :
-                                                                            item.finalRank === 3 ? 'text-amber-600' :
-                                                                                'text-gray-600'
-                                                                }>
-                                                                    {getOrdinal(item.finalRank)}
-                                                                </span>
-                                                            ) : '—'}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8 text-gray-500">
-                                        Select a category to view judge scores
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-
-                {activeScoreTab === 'final-results' && (
-                    <motion.div
-                        key="final-results"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        transition={{ duration: 0.3 }}
-                    >
-                        {/* TABLE 3: Average Ranks (Final Results) */}
-                        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                            <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
-                                <h3 className="text-lg font-semibold text-white">3. Average Ranks - Final Results</h3>
-                                <p className="text-white/70 text-sm mt-1">
-                                    Overall ranking based on average of all category ranks (Sum of Ranks ÷ Number of Categories)
-                                </p>
-                            </div>
-                            <div className="p-6">
-                                {categories.length > 0 && table3Data ? (
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full border-collapse">
-                                            <thead>
-                                                <tr className="bg-gray-50">
-                                                    <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
-                                                        Participant
-                                                    </th>
-                                                    {categories.map((category) => (
-                                                        <th key={category.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
-                                                            {category.name}
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
+                                                            Sum
                                                         </th>
-                                                    ))}
-                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
-                                                        Sum
-                                                    </th>
-                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-green-50">
-                                                        <div>Results</div>
-                                                        <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
-                                                    </th>
-                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
-                                                        Final Rank
-                                                    </th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {table3Data.map((item, index) => (
-                                                    <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                        <td className="border border-gray-200 px-4 py-3">
-                                                            <div className="flex items-center gap-3">
-                                                                {item.participant.photo_url ? (
-                                                                    <img
-                                                                        src={item.participant.photo_url}
-                                                                        alt={item.participant.name}
-                                                                        className="w-8 h-8 rounded-full object-cover"
-                                                                    />
-                                                                ) : (
-                                                                    <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white text-sm font-bold">
-                                                                        {item.participant.name.charAt(0)}
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-purple-50">
+                                                            <div>Results</div>
+                                                            <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
+                                                        </th>
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                            Final Rank
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {table2Data.participants.map((item, index) => (
+                                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                            <td className="border border-gray-200 px-4 py-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    {item.participant.photo_url ? (
+                                                                        <img
+                                                                            src={item.participant.photo_url}
+                                                                            alt={item.participant.name}
+                                                                            className="w-8 h-8 rounded-full object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                                                                            {item.participant.name.charAt(0)}
+                                                                        </div>
+                                                                    )}
+                                                                    <div>
+                                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
                                                                     </div>
-                                                                )}
-                                                                <div>
-                                                                    <p className="font-medium text-gray-900">{item.participant.name}</p>
-                                                                    <p className="text-sm text-gray-500">{item.participant.department}</p>
                                                                 </div>
-                                                            </div>
-                                                        </td>
-                                                        {categories.map((category) => (
-                                                            <td key={category.id} className="border border-gray-200 px-4 py-3 text-center">
-                                                                {item.categoryRanks[category.id] !== null ? (
-                                                                    <span className="font-medium">{item.categoryRanks[category.id]}</span>
+                                                            </td>
+                                                            {table2Data.judges.map((judge) => (
+                                                                <td key={judge.id} className="border border-gray-200 px-4 py-3 text-center">
+                                                                    {item.judgeRanks[judge.id]?.rank !== null ? (
+                                                                        <span className="font-medium">{item.judgeRanks[judge.id].rank}</span>
+                                                                    ) : '—'}
+                                                                </td>
+                                                            ))}
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
+                                                                {item.judgeCount > 0 ? item.sumRanks : '—'}
+                                                            </td>
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-purple-700 bg-purple-50">
+                                                                {item.results !== null ? item.results.toFixed(2) : '—'}
+                                                            </td>
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                                {item.finalRank !== null ? (
+                                                                    <span className={
+                                                                        item.finalRank === 1 ? 'text-yellow-600' :
+                                                                            item.finalRank === 2 ? 'text-gray-500' :
+                                                                                item.finalRank === 3 ? 'text-amber-600' :
+                                                                                    'text-gray-600'
+                                                                    }>
+                                                                        {getOrdinal(item.finalRank)}
+                                                                    </span>
                                                                 ) : '—'}
                                                             </td>
-                                                        ))}
-                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
-                                                            {item.categoryCount > 0 ? (
-                                                                <span title={`${item.sumRanks} ÷ ${item.categoryCount}`}>{item.sumRanks}</span>
-                                                            ) : '—'}
-                                                        </td>
-                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-green-700 bg-green-50">
-                                                            {item.avgRank !== null ? (
-                                                                <span title={`${item.sumRanks} ÷ ${item.categoryCount} = ${item.avgRank.toFixed(2)}`}>
-                                                                    {item.avgRank.toFixed(2)}
-                                                                </span>
-                                                            ) : '—'}
-                                                        </td>
-                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
-                                                            {item.finalRank !== null ? (
-                                                                <span className={
-                                                                    item.finalRank === 1 ? 'text-yellow-600' :
-                                                                        item.finalRank === 2 ? 'text-gray-500' :
-                                                                            item.finalRank === 3 ? 'text-amber-600' :
-                                                                                'text-gray-600'
-                                                                }>
-                                                                    {getOrdinal(item.finalRank)}
-                                                                </span>
-                                                            ) : '—'}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8 text-gray-500">
-                                        {categories.length === 0 ? 'No categories found for this event' : 'No scores available yet'}
-                                    </div>
-                                )}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8 text-gray-500">
+                                            Select a category to view judge scores
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
+                        </motion.div>
+                    )
+                }
+
+                {
+                    activeScoreTab === 'final-results' && (
+                        <motion.div
+                            key="final-results"
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            {/* TABLE 3: Average Ranks (Final Results) */}
+                            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
+                                    <h3 className="text-lg font-semibold text-white">3. Average Ranks - Final Results</h3>
+                                    <p className="text-white/70 text-sm mt-1">
+                                        Overall ranking based on average of all category ranks (Sum of Ranks ÷ Number of Categories)
+                                    </p>
+                                </div>
+                                <div className="p-6">
+                                    {categories.length > 0 && table3Data ? (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse">
+                                                <thead>
+                                                    <tr className="bg-gray-50">
+                                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                            Participant
+                                                        </th>
+                                                        {categories.map((category) => (
+                                                            <th key={category.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                                {category.name}
+                                                            </th>
+                                                        ))}
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
+                                                            Sum
+                                                        </th>
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-green-50">
+                                                            <div>Results</div>
+                                                            <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
+                                                        </th>
+                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                            Final Rank
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {table3Data.map((item, index) => (
+                                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                            <td className="border border-gray-200 px-4 py-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    {item.participant.photo_url ? (
+                                                                        <img
+                                                                            src={item.participant.photo_url}
+                                                                            alt={item.participant.name}
+                                                                            className="w-8 h-8 rounded-full object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white text-sm font-bold">
+                                                                            {item.participant.name.charAt(0)}
+                                                                        </div>
+                                                                    )}
+                                                                    <div>
+                                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            {categories.map((category) => (
+                                                                <td key={category.id} className="border border-gray-200 px-4 py-3 text-center">
+                                                                    {item.categoryRanks[category.id] !== null ? (
+                                                                        <span className="font-medium">{item.categoryRanks[category.id]}</span>
+                                                                    ) : '—'}
+                                                                </td>
+                                                            ))}
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
+                                                                {item.categoryCount > 0 ? (
+                                                                    <span title={`${item.sumRanks} ÷ ${item.categoryCount}`}>{item.sumRanks}</span>
+                                                                ) : '—'}
+                                                            </td>
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-green-700 bg-green-50">
+                                                                {item.avgRank !== null ? (
+                                                                    <span title={`${item.sumRanks} ÷ ${item.categoryCount} = ${item.avgRank.toFixed(2)}`}>
+                                                                        {item.avgRank.toFixed(2)}
+                                                                    </span>
+                                                                ) : '—'}
+                                                            </td>
+                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                                {item.finalRank !== null ? (
+                                                                    <span className={
+                                                                        item.finalRank === 1 ? 'text-yellow-600' :
+                                                                            item.finalRank === 2 ? 'text-gray-500' :
+                                                                                item.finalRank === 3 ? 'text-amber-600' :
+                                                                                    'text-gray-600'
+                                                                    }>
+                                                                        {getOrdinal(item.finalRank)}
+                                                                    </span>
+                                                                ) : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8 text-gray-500">
+                                            {categories.length === 0 ? 'No categories found for this event' : 'No scores available yet'}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    )
+                }
+            </AnimatePresence >
+        </div >
     );
 };
 
 // Settings Tab Component
 const SettingsTab = ({ event, onEdit, onDelete, onEventUpdate }: { event: Event; onEdit: () => void; onDelete: () => void; onEventUpdate?: (updatedEvent: Event) => void }) => {
     const [auditorDetailedView, setAuditorDetailedView] = useState(event.auditor_detailed_view || false);
+    const [topDisplayLimit, setTopDisplayLimit] = useState<number | null>(event.top_display_limit || null);
     const [saving, setSaving] = useState(false);
 
     const handleToggleAuditorDetailedView = async () => {
         setSaving(true);
         const newValue = !auditorDetailedView;
-        
+
         const { error } = await supabase
             .from('events')
             .update({ auditor_detailed_view: newValue })
             .eq('id', event.id);
-        
+
         if (!error) {
             setAuditorDetailedView(newValue);
             if (onEventUpdate) {
                 onEventUpdate({ ...event, auditor_detailed_view: newValue });
+            }
+        }
+        setSaving(false);
+    };
+
+    const handleTopDisplayLimitChange = async (value: string) => {
+        setSaving(true);
+        const newValue = value === '' ? null : Number(value);
+
+        const { error } = await supabase
+            .from('events')
+            .update({ top_display_limit: newValue })
+            .eq('id', event.id);
+
+        if (!error) {
+            setTopDisplayLimit(newValue);
+            if (onEventUpdate) {
+                onEventUpdate({ ...event, top_display_limit: newValue });
             }
         }
         setSaving(false);
@@ -3838,26 +4100,52 @@ const SettingsTab = ({ event, onEdit, onDelete, onEventUpdate }: { event: Event;
             {/* Auditor Settings */}
             <div className="bg-white border border-gray-200 rounded-xl p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">Auditor Settings</h3>
-                <div className="flex items-center justify-between py-3">
-                    <div>
-                        <p className="font-medium text-gray-900">Allow Detailed Score Breakdown</p>
-                        <p className="text-sm text-gray-500 mt-1">
-                            When enabled, auditors can view detailed score breakdowns by judge and criteria, similar to the admin scores page.
-                        </p>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                        <div>
+                            <p className="font-medium text-gray-900">Allow Detailed Score Breakdown</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                                When enabled, auditors can view detailed score breakdowns by judge and criteria, similar to the admin scores page.
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleToggleAuditorDetailedView}
+                            disabled={saving}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${auditorDetailedView ? 'bg-maroon' : 'bg-gray-300'
+                                } ${saving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${auditorDetailedView ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                            />
+                        </button>
                     </div>
-                    <button
-                        onClick={handleToggleAuditorDetailedView}
-                        disabled={saving}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            auditorDetailedView ? 'bg-maroon' : 'bg-gray-300'
-                        } ${saving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                        <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                auditorDetailedView ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                        />
-                    </button>
+
+                    {/* Top Display Limit Setting */}
+                    <div className="flex items-center justify-between py-3">
+                        <div>
+                            <p className="font-medium text-gray-900">Results Display Limit</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Control how many rankings are displayed in the auditor's Final Results view.
+                            </p>
+                        </div>
+                        <select
+                            value={topDisplayLimit === null ? '' : topDisplayLimit}
+                            onChange={(e) => handleTopDisplayLimitChange(e.target.value)}
+                            disabled={saving}
+                            className={`px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-maroon focus:border-maroon ${saving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                            <option value="">Show All</option>
+                            <option value="3">Top 3</option>
+                            <option value="4">Top 4</option>
+                            <option value="5">Top 5</option>
+                            <option value="6">Top 6</option>
+                            <option value="7">Top 7</option>
+                            <option value="8">Top 8</option>
+                            <option value="9">Top 9</option>
+                            <option value="10">Top 10</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
