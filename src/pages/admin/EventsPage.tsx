@@ -1139,7 +1139,8 @@ const TabularTab = ({ event }: { event: Event }) => {
                     {categories.map((category) => (
                         <div
                             key={category.id}
-                            className="relative bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-maroon/30 hover:shadow-lg transition-all group"
+                            onClick={() => openEditModal(category)}
+                            className="relative bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-maroon/30 hover:shadow-lg transition-all group cursor-pointer"
                         >
                             {/* Background Image with Overlay */}
                             <div className="relative h-48">
@@ -1169,14 +1170,18 @@ const TabularTab = ({ event }: { event: Event }) => {
                                         {/* Action Buttons - Always Visible */}
                                         <div className="flex gap-1">
                                             <button
-                                                onClick={() => openEditModal(category)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openEditModal(category);
+                                                }}
                                                 className="p-2 bg-white/90 backdrop-blur-sm text-maroon rounded-lg hover:bg-white transition-colors shadow-lg"
                                                 title="Edit Category"
                                             >
                                                 <FaEdit className="w-4 h-4" />
                                             </button>
                                             <button
-                                                onClick={() => {
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
                                                     setDeletingCategory(category);
                                                     setShowDeleteModal(true);
                                                 }}
@@ -1251,19 +1256,21 @@ const TabularTab = ({ event }: { event: Event }) => {
                     <div>
                         <label className="form-label">Category Image (Optional)</label>
                         {categoryImagePreview ? (
-                            <div className="relative inline-block">
-                                <img
-                                    src={categoryImagePreview}
-                                    alt="Category preview"
-                                    className="w-32 h-32 object-cover rounded-xl border-2 border-gray-200"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={removeImage}
-                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
-                                >
-                                    <FaTimes className="w-3 h-3" />
-                                </button>
+                            <div className="flex justify-center">
+                                <div className="relative inline-block">
+                                    <img
+                                        src={categoryImagePreview}
+                                        alt="Category preview"
+                                        className="w-32 h-32 object-cover rounded-xl border-2 border-gray-200"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={removeImage}
+                                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                                    >
+                                        <FaTimes className="w-3 h-3" />
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-maroon/50 hover:bg-gray-50 transition-all">
@@ -2940,6 +2947,9 @@ const ScoresTab = ({ event }: { event: Event }) => {
     const [criteriaMap, setCriteriaMap] = useState<Record<number, any[]>>({});
     const [loading, setLoading] = useState(true);
 
+    // Active tab state
+    const [activeScoreTab, setActiveScoreTab] = useState<'judge-scores' | 'average-scores' | 'final-results'>('judge-scores');
+
     // Filter states for Table 1
     const [selectedJudge, setSelectedJudge] = useState<number | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -3336,28 +3346,65 @@ const ScoresTab = ({ event }: { event: Event }) => {
     }
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
+            {/* Main Score Section Tabs */}
+            <div className="bg-gray-100 p-1.5 rounded-xl">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                    <button
+                        onClick={() => setActiveScoreTab('judge-scores')}
+                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
+                            activeScoreTab === 'judge-scores'
+                                ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                                : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                        }`}
+                    >
+                        Judge Scores by Criteria
+                    </button>
+                    <button
+                        onClick={() => setActiveScoreTab('average-scores')}
+                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
+                            activeScoreTab === 'average-scores'
+                                ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                                : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                        }`}
+                    >
+                        Average Judge Scores
+                    </button>
+                    <button
+                        onClick={() => setActiveScoreTab('final-results')}
+                        className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
+                            activeScoreTab === 'final-results'
+                                ? 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                                : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                        }`}
+                    >
+                        Average Ranks - Final Results
+                    </button>
+                </div>
+            </div>
+
             {/* Gender Toggle for Individual Events */}
             {isIndividual && (
-                <div className="bg-white border border-gray-200 rounded-xl p-4">
-                    <label className="text-sm font-medium text-gray-700 mb-3 block">Filter by Gender</label>
-                    <div className="flex gap-2">
+                <div className="bg-gray-100 p-1.5 rounded-xl">
+                    <div className="flex gap-1.5">
                         <button
                             onClick={() => setSelectedGender('male')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${selectedGender === 'male'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
+                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${
+                                selectedGender === 'male'
+                                    ? 'bg-white text-blue-600 shadow-md ring-1 ring-black/5'
+                                    : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                            }`}
                         >
                             <FaMars className="w-4 h-4" />
                             Male
                         </button>
                         <button
                             onClick={() => setSelectedGender('female')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${selectedGender === 'female'
-                                ? 'bg-pink-600 text-white'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
+                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${
+                                selectedGender === 'female'
+                                    ? 'bg-white text-pink-600 shadow-md ring-1 ring-black/5'
+                                    : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                            }`}
                         >
                             <FaVenus className="w-4 h-4" />
                             Female
@@ -3366,330 +3413,366 @@ const ScoresTab = ({ event }: { event: Event }) => {
                 </div>
             )}
 
-            {/* TABLE 1: Judge Scores by Criteria */}
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
-                    <h3 className="text-lg font-semibold text-white">1. Judge Rankings by Criteria</h3>
-                    <p className="text-white/70 text-sm mt-1">View rankings per criteria with total score and overall rank</p>
-                </div>
-                <div className="p-6">
-                    {/* Filters */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <div>
-                            <label className="form-label">Select Judge</label>
-                            <select
-                                value={selectedJudge || ''}
-                                onChange={(e) => setSelectedJudge(e.target.value ? Number(e.target.value) : null)}
-                                className="form-input"
-                            >
-                                <option value="">-- Select a Judge --</option>
-                                {judges.map(judge => (
-                                    <option key={judge.id} value={judge.id}>{judge.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="form-label">Select Category</label>
-                            <select
-                                value={selectedCategory || ''}
-                                onChange={(e) => setSelectedCategory(e.target.value ? Number(e.target.value) : null)}
-                                className="form-input"
-                            >
-                                <option value="">-- Select a Category --</option>
-                                {categories.map(category => (
-                                    <option key={category.id} value={category.id}>{category.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* Table */}
-                    {table1Data ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50">
-                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
-                                            Participant
-                                        </th>
-                                        {table1Data.criteria.map((c: any) => (
-                                            <th key={c.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
-                                                <div>{c.name}</div>
-                                                <div className="text-xs font-normal text-gray-500">
-                                                    {c.percentage > 0 ? `${c.percentage}%` : ''}
-                                                </div>
-                                            </th>
-                                        ))}
-                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-maroon/10">
-                                            Total
-                                        </th>
-                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
-                                            Rank
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {table1Data.participants.map((item, index) => (
-                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                            <td className="border border-gray-200 px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    {item.participant.photo_url ? (
-                                                        <img
-                                                            src={item.participant.photo_url}
-                                                            alt={item.participant.name}
-                                                            className="w-8 h-8 rounded-full object-cover"
-                                                        />
-                                                    ) : (
-                                                        <div className="w-8 h-8 rounded-full bg-maroon flex items-center justify-center text-white text-sm font-bold">
-                                                            {item.participant.name.charAt(0)}
-                                                        </div>
-                                                    )}
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
-                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            {table1Data.criteria.map((c: any) => (
-                                                <td key={c.id} className="border border-gray-200 px-4 py-3 text-center text-gray-400">
-                                                    —
-                                                </td>
+            {/* Tab Content with Animations */}
+            <AnimatePresence mode="wait">
+                {activeScoreTab === 'judge-scores' && (
+                    <motion.div
+                        key="judge-scores"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                    >
+                        {/* TABLE 1: Judge Scores by Criteria */}
+                        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                            <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
+                                <h3 className="text-lg font-semibold text-white">1. Judge Rankings by Criteria</h3>
+                                <p className="text-white/70 text-sm mt-1">View rankings per criteria with total score and overall rank</p>
+                            </div>
+                            <div className="p-6">
+                                {/* Filters */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                    <div>
+                                        <label className="form-label">Select Judge</label>
+                                        <select
+                                            value={selectedJudge || ''}
+                                            onChange={(e) => setSelectedJudge(e.target.value ? Number(e.target.value) : null)}
+                                            className="form-input"
+                                        >
+                                            <option value="">-- Select a Judge --</option>
+                                            {judges.map(judge => (
+                                                <option key={judge.id} value={judge.id}>{judge.name}</option>
                                             ))}
-                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-maroon bg-maroon/5">
-                                                {item.total.toFixed(1)}
-                                            </td>
-                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
-                                                {item.rank !== null ? (
-                                                    <span className={
-                                                        item.rank === 1 ? 'text-yellow-600' :
-                                                            item.rank === 2 ? 'text-gray-500' :
-                                                                item.rank === 3 ? 'text-amber-600' :
-                                                                    'text-gray-600'
-                                                    }>
-                                                        {getOrdinal(item.rank)}
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="text-center py-8 text-gray-500">
-                            Select a judge and category to view scores
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* TABLE 2: Scores by Judge */}
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="bg-gradient-to-r from-purple-600 to-purple-800 px-6 py-4">
-                    <h3 className="text-lg font-semibold text-white">2. Scores by Judge / Average Judge Scores</h3>
-                    <p className="text-white/70 text-sm mt-1">View rankings from each judge and the average</p>
-                </div>
-                <div className="p-6">
-                    {/* Filter */}
-                    <div className="mb-6">
-                        <label className="form-label">Select Category</label>
-                        <select
-                            value={selectedCriteriaForTable2 || ''}
-                            onChange={(e) => setSelectedCriteriaForTable2(e.target.value ? Number(e.target.value) : null)}
-                            className="form-input max-w-md"
-                        >
-                            <option value="">-- Select a Category --</option>
-                            {categories.map(category => (
-                                <option key={category.id} value={category.id}>{category.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Table */}
-                    {table2Data ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50">
-                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
-                                            Participant
-                                        </th>
-                                        {table2Data.judges.map((judge) => (
-                                            <th key={judge.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
-                                                {judge.name}
-                                            </th>
-                                        ))}
-                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
-                                            Sum
-                                        </th>
-                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-purple-50">
-                                            <div>Results</div>
-                                            <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
-                                        </th>
-                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
-                                            Final Rank
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {table2Data.participants.map((item, index) => (
-                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                            <td className="border border-gray-200 px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    {item.participant.photo_url ? (
-                                                        <img
-                                                            src={item.participant.photo_url}
-                                                            alt={item.participant.name}
-                                                            className="w-8 h-8 rounded-full object-cover"
-                                                        />
-                                                    ) : (
-                                                        <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
-                                                            {item.participant.name.charAt(0)}
-                                                        </div>
-                                                    )}
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
-                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            {table2Data.judges.map((judge) => (
-                                                <td key={judge.id} className="border border-gray-200 px-4 py-3 text-center">
-                                                    {item.judgeRanks[judge.id]?.rank !== null ? (
-                                                        <span className="font-medium">{item.judgeRanks[judge.id].rank}</span>
-                                                    ) : '—'}
-                                                </td>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Select Category</label>
+                                        <select
+                                            value={selectedCategory || ''}
+                                            onChange={(e) => setSelectedCategory(e.target.value ? Number(e.target.value) : null)}
+                                            className="form-input"
+                                        >
+                                            <option value="">-- Select a Category --</option>
+                                            {categories.map(category => (
+                                                <option key={category.id} value={category.id}>{category.name}</option>
                                             ))}
-                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
-                                                {item.judgeCount > 0 ? item.sumRanks : '—'}
-                                            </td>
-                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-purple-700 bg-purple-50">
-                                                {item.results !== null ? item.results.toFixed(2) : '—'}
-                                            </td>
-                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
-                                                {item.finalRank !== null ? (
-                                                    <span className={
-                                                        item.finalRank === 1 ? 'text-yellow-600' :
-                                                            item.finalRank === 2 ? 'text-gray-500' :
-                                                                item.finalRank === 3 ? 'text-amber-600' :
-                                                                    'text-gray-600'
-                                                    }>
-                                                        {getOrdinal(item.finalRank)}
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="text-center py-8 text-gray-500">
-                            Select a category to view judge scores
-                        </div>
-                    )}
-                </div>
-            </div>
+                                        </select>
+                                    </div>
+                                </div>
 
-            {/* TABLE 3: Average Ranks (Final Results) */}
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="bg-gradient-to-r from-green-600 to-emerald-700 px-6 py-4">
-                    <h3 className="text-lg font-semibold text-white">3. Average Ranks - Final Results</h3>
-                    <p className="text-white/70 text-sm mt-1">
-                        Overall ranking based on average of all category ranks (Sum of Ranks ÷ Number of Categories)
-                    </p>
-                </div>
-                <div className="p-6">
-                    {categories.length > 0 && table3Data ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50">
-                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
-                                            Participant
-                                        </th>
-                                        {categories.map((category) => (
-                                            <th key={category.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
-                                                {category.name}
-                                            </th>
+                                {/* Table */}
+                                {table1Data ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-50">
+                                                    <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                        Participant
+                                                    </th>
+                                                    {table1Data.criteria.map((c: any) => (
+                                                        <th key={c.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                            <div>{c.name}</div>
+                                                            <div className="text-xs font-normal text-gray-500">
+                                                                {c.percentage > 0 ? `${c.percentage}%` : ''}
+                                                                {c.min_score && c.max_score && (
+                                                                    <div className="mt-0.5">{c.min_score}-{c.max_score}</div>
+                                                                )}
+                                                            </div>
+                                                        </th>
+                                                    ))}
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-maroon/10">
+                                                        Total
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                        Rank
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {table1Data.participants.map((item, index) => (
+                                                    <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                        <td className="border border-gray-200 px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                {item.participant.photo_url ? (
+                                                                    <img
+                                                                        src={item.participant.photo_url}
+                                                                        alt={item.participant.name}
+                                                                        className="w-8 h-8 rounded-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-8 h-8 rounded-full bg-maroon flex items-center justify-center text-white text-sm font-bold">
+                                                                        {item.participant.name.charAt(0)}
+                                                                    </div>
+                                                                )}
+                                                                <div>
+                                                                    <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                    <p className="text-sm text-gray-500">{item.participant.department}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        {table1Data.criteria.map((c: any) => (
+                                                            <td key={c.id} className="border border-gray-200 px-4 py-3 text-center text-gray-400">
+                                                                —
+                                                            </td>
+                                                        ))}
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-maroon bg-maroon/5">
+                                                            {item.total.toFixed(1)}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                            {item.rank !== null ? (
+                                                                <span className={
+                                                                    item.rank === 1 ? 'text-yellow-600' :
+                                                                        item.rank === 2 ? 'text-gray-500' :
+                                                                            item.rank === 3 ? 'text-amber-600' :
+                                                                                'text-gray-600'
+                                                                }>
+                                                                    {getOrdinal(item.rank)}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-gray-500">
+                                        Select a judge and category to view scores
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+
+                {activeScoreTab === 'average-scores' && (
+                    <motion.div
+                        key="average-scores"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                    >
+                        {/* TABLE 2: Scores by Judge */}
+                        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                            <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
+                                <h3 className="text-lg font-semibold text-white">2. Scores by Judge / Average Judge Scores</h3>
+                                <p className="text-white/70 text-sm mt-1">View rankings from each judge and the average</p>
+                            </div>
+                            <div className="p-6">
+                                {/* Filter */}
+                                <div className="mb-6">
+                                    <label className="form-label">Select Category</label>
+                                    <select
+                                        value={selectedCriteriaForTable2 || ''}
+                                        onChange={(e) => setSelectedCriteriaForTable2(e.target.value ? Number(e.target.value) : null)}
+                                        className="form-input max-w-md"
+                                    >
+                                        <option value="">-- Select a Category --</option>
+                                        {categories.map(category => (
+                                            <option key={category.id} value={category.id}>{category.name}</option>
                                         ))}
-                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
-                                            Sum
-                                        </th>
-                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-green-50">
-                                            <div>Results</div>
-                                            <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
-                                        </th>
-                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
-                                            Final Rank
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {table3Data.map((item, index) => (
-                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                            <td className="border border-gray-200 px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    {item.participant.photo_url ? (
-                                                        <img
-                                                            src={item.participant.photo_url}
-                                                            alt={item.participant.name}
-                                                            className="w-8 h-8 rounded-full object-cover"
-                                                        />
-                                                    ) : (
-                                                        <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white text-sm font-bold">
-                                                            {item.participant.name.charAt(0)}
-                                                        </div>
-                                                    )}
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
-                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            {categories.map((category) => (
-                                                <td key={category.id} className="border border-gray-200 px-4 py-3 text-center">
-                                                    {item.categoryRanks[category.id] !== null ? (
-                                                        <span className="font-medium">{item.categoryRanks[category.id]}</span>
-                                                    ) : '—'}
-                                                </td>
-                                            ))}
-                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
-                                                {item.categoryCount > 0 ? (
-                                                    <span title={`${item.sumRanks} ÷ ${item.categoryCount}`}>{item.sumRanks}</span>
-                                                ) : '—'}
-                                            </td>
-                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-green-700 bg-green-50">
-                                                {item.avgRank !== null ? (
-                                                    <span title={`${item.sumRanks} ÷ ${item.categoryCount} = ${item.avgRank.toFixed(2)}`}>
-                                                        {item.avgRank.toFixed(2)}
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
-                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
-                                                {item.finalRank !== null ? (
-                                                    <span className={
-                                                        item.finalRank === 1 ? 'text-yellow-600' :
-                                                            item.finalRank === 2 ? 'text-gray-500' :
-                                                                item.finalRank === 3 ? 'text-amber-600' :
-                                                                    'text-gray-600'
-                                                    }>
-                                                        {getOrdinal(item.finalRank)}
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </select>
+                                </div>
+
+                                {/* Table */}
+                                {table2Data ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-50">
+                                                    <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                        Participant
+                                                    </th>
+                                                    {table2Data.judges.map((judge) => (
+                                                        <th key={judge.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                            {judge.name}
+                                                        </th>
+                                                    ))}
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
+                                                        Sum
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-purple-50">
+                                                        <div>Results</div>
+                                                        <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                        Final Rank
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {table2Data.participants.map((item, index) => (
+                                                    <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                        <td className="border border-gray-200 px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                {item.participant.photo_url ? (
+                                                                    <img
+                                                                        src={item.participant.photo_url}
+                                                                        alt={item.participant.name}
+                                                                        className="w-8 h-8 rounded-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                                                                        {item.participant.name.charAt(0)}
+                                                                    </div>
+                                                                )}
+                                                                <div>
+                                                                    <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                    <p className="text-sm text-gray-500">{item.participant.department}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        {table2Data.judges.map((judge) => (
+                                                            <td key={judge.id} className="border border-gray-200 px-4 py-3 text-center">
+                                                                {item.judgeRanks[judge.id]?.rank !== null ? (
+                                                                    <span className="font-medium">{item.judgeRanks[judge.id].rank}</span>
+                                                                ) : '—'}
+                                                            </td>
+                                                        ))}
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
+                                                            {item.judgeCount > 0 ? item.sumRanks : '—'}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-purple-700 bg-purple-50">
+                                                            {item.results !== null ? item.results.toFixed(2) : '—'}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                            {item.finalRank !== null ? (
+                                                                <span className={
+                                                                    item.finalRank === 1 ? 'text-yellow-600' :
+                                                                        item.finalRank === 2 ? 'text-gray-500' :
+                                                                            item.finalRank === 3 ? 'text-amber-600' :
+                                                                                'text-gray-600'
+                                                                }>
+                                                                    {getOrdinal(item.finalRank)}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-gray-500">
+                                        Select a category to view judge scores
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    ) : (
-                        <div className="text-center py-8 text-gray-500">
-                            {categories.length === 0 ? 'No categories found for this event' : 'No scores available yet'}
+                    </motion.div>
+                )}
+
+                {activeScoreTab === 'final-results' && (
+                    <motion.div
+                        key="final-results"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                    >
+                        {/* TABLE 3: Average Ranks (Final Results) */}
+                        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                            <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
+                                <h3 className="text-lg font-semibold text-white">3. Average Ranks - Final Results</h3>
+                                <p className="text-white/70 text-sm mt-1">
+                                    Overall ranking based on average of all category ranks (Sum of Ranks ÷ Number of Categories)
+                                </p>
+                            </div>
+                            <div className="p-6">
+                                {categories.length > 0 && table3Data ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-50">
+                                                    <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                        Participant
+                                                    </th>
+                                                    {categories.map((category) => (
+                                                        <th key={category.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                            {category.name}
+                                                        </th>
+                                                    ))}
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
+                                                        Sum
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-green-50">
+                                                        <div>Results</div>
+                                                        <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                        Final Rank
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {table3Data.map((item, index) => (
+                                                    <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                        <td className="border border-gray-200 px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                {item.participant.photo_url ? (
+                                                                    <img
+                                                                        src={item.participant.photo_url}
+                                                                        alt={item.participant.name}
+                                                                        className="w-8 h-8 rounded-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white text-sm font-bold">
+                                                                        {item.participant.name.charAt(0)}
+                                                                    </div>
+                                                                )}
+                                                                <div>
+                                                                    <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                    <p className="text-sm text-gray-500">{item.participant.department}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        {categories.map((category) => (
+                                                            <td key={category.id} className="border border-gray-200 px-4 py-3 text-center">
+                                                                {item.categoryRanks[category.id] !== null ? (
+                                                                    <span className="font-medium">{item.categoryRanks[category.id]}</span>
+                                                                ) : '—'}
+                                                            </td>
+                                                        ))}
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
+                                                            {item.categoryCount > 0 ? (
+                                                                <span title={`${item.sumRanks} ÷ ${item.categoryCount}`}>{item.sumRanks}</span>
+                                                            ) : '—'}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-green-700 bg-green-50">
+                                                            {item.avgRank !== null ? (
+                                                                <span title={`${item.sumRanks} ÷ ${item.categoryCount} = ${item.avgRank.toFixed(2)}`}>
+                                                                    {item.avgRank.toFixed(2)}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                            {item.finalRank !== null ? (
+                                                                <span className={
+                                                                    item.finalRank === 1 ? 'text-yellow-600' :
+                                                                        item.finalRank === 2 ? 'text-gray-500' :
+                                                                            item.finalRank === 3 ? 'text-amber-600' :
+                                                                                'text-gray-600'
+                                                                }>
+                                                                    {getOrdinal(item.finalRank)}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-gray-500">
+                                        {categories.length === 0 ? 'No categories found for this event' : 'No scores available yet'}
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    )}
-                </div>
-            </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

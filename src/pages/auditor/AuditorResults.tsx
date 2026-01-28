@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FaTrophy, FaMedal, FaChartBar, FaMars, FaVenus, FaUserTie } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Auditor, Category, Criteria, Participant, Judge, Score, Event } from '../../types';
@@ -20,6 +20,7 @@ const AuditorResults = () => {
     const [criteriaMap, setCriteriaMap] = useState<Record<number, Criteria[]>>({});
     const [loading, setLoading] = useState(true);
     const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
+    const [activeScoreTab, setActiveScoreTab] = useState<'judge-scores' | 'average-scores' | 'final-results'>('final-results');
 
     // Detailed view filters
     const [selectedJudge, setSelectedJudge] = useState<number | null>(null);
@@ -389,59 +390,110 @@ const AuditorResults = () => {
                 </p>
             </motion.div>
 
+            {/* Main Score Section Tabs - Only shown when auditor_detailed_view is enabled */}
+            {event?.auditor_detailed_view && (
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="mb-6"
+                >
+                    <div className={`p-1.5 rounded-xl ${isDarkMode ? 'bg-white/10' : 'bg-gray-100'}`}>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                            <button
+                                onClick={() => setActiveScoreTab('judge-scores')}
+                                className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
+                                    activeScoreTab === 'judge-scores'
+                                        ? isDarkMode ? 'bg-white text-maroon shadow-md' : 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                                        : isDarkMode ? 'bg-transparent text-white/70 hover:text-white hover:bg-white/20' : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                                }`}
+                            >
+                                Judge Scores by Criteria
+                            </button>
+                            <button
+                                onClick={() => setActiveScoreTab('average-scores')}
+                                className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
+                                    activeScoreTab === 'average-scores'
+                                        ? isDarkMode ? 'bg-white text-maroon shadow-md' : 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                                        : isDarkMode ? 'bg-transparent text-white/70 hover:text-white hover:bg-white/20' : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                                }`}
+                            >
+                                Average Judge Scores
+                            </button>
+                            <button
+                                onClick={() => setActiveScoreTab('final-results')}
+                                className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm ${
+                                    activeScoreTab === 'final-results'
+                                        ? isDarkMode ? 'bg-white text-maroon shadow-md' : 'bg-white text-maroon shadow-md ring-1 ring-black/5'
+                                        : isDarkMode ? 'bg-transparent text-white/70 hover:text-white hover:bg-white/20' : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                                }`}
+                            >
+                                Average Ranks - Final Results
+                            </button>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
             {/* Gender Toggle for Individual Events */}
             {isIndividual && (
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
-                    className={`rounded-2xl p-4 mb-6 ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-sm'}`}
+                    className="mb-6"
                 >
-                    <label className={`text-sm font-medium mb-3 block ${isDarkMode ? 'text-white/80' : 'text-gray-700'}`}>
-                        Filter by Gender
-                    </label>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setSelectedGender('male')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${selectedGender === 'male'
-                                ? 'bg-blue-600 text-white'
-                                : isDarkMode ? 'bg-white/10 text-white/70 hover:bg-white/20' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    <div className={`p-1.5 rounded-xl ${isDarkMode ? 'bg-white/10' : 'bg-gray-100'}`}>
+                        <div className="flex gap-1.5">
+                            <button
+                                onClick={() => setSelectedGender('male')}
+                                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${
+                                    selectedGender === 'male'
+                                        ? isDarkMode ? 'bg-white text-blue-600 shadow-md' : 'bg-white text-blue-600 shadow-md ring-1 ring-black/5'
+                                        : isDarkMode ? 'bg-transparent text-white/70 hover:text-white hover:bg-white/20' : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
                                 }`}
-                        >
-                            <FaMars className="w-4 h-4" />
-                            Male
-                        </button>
-                        <button
-                            onClick={() => setSelectedGender('female')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${selectedGender === 'female'
-                                ? 'bg-pink-600 text-white'
-                                : isDarkMode ? 'bg-white/10 text-white/70 hover:bg-white/20' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            >
+                                <FaMars className="w-4 h-4" />
+                                Male
+                            </button>
+                            <button
+                                onClick={() => setSelectedGender('female')}
+                                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${
+                                    selectedGender === 'female'
+                                        ? isDarkMode ? 'bg-white text-pink-600 shadow-md' : 'bg-white text-pink-600 shadow-md ring-1 ring-black/5'
+                                        : isDarkMode ? 'bg-transparent text-white/70 hover:text-white hover:bg-white/20' : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
                                 }`}
-                        >
-                            <FaVenus className="w-4 h-4" />
-                            Female
-                        </button>
+                            >
+                                <FaVenus className="w-4 h-4" />
+                                Female
+                            </button>
+                        </div>
                     </div>
                 </motion.div>
             )}
 
-            {/* Results Table */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className={`rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-lg'}`}
-            >
-                {/* Table Header */}
-                <div className={`px-6 py-4 ${isDarkMode ? 'bg-gradient-to-r from-maroon/80 to-maroon-dark/80' : 'bg-gradient-to-r from-maroon to-maroon-dark'}`}>
-                    <div className="flex items-center gap-3">
-                        <FaTrophy className="w-6 h-6 text-gold" />
-                        <div>
-                            <h3 className="text-lg font-semibold text-white">Final Rankings</h3>
-                            <p className="text-white/70 text-sm">Overall ranking based on average of all category ranks</p>
+            {/* Tab Content with Animations */}
+            <AnimatePresence mode="wait">
+                {/* TABLE 3: Final Results - Show when no detailed view OR when final-results tab is active */}
+                {(!event?.auditor_detailed_view || activeScoreTab === 'final-results') && (
+                    <motion.div
+                        key="final-results"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                        className={`rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-lg'}`}
+                    >
+                        {/* Table Header */}
+                        <div className={`px-6 py-4 ${isDarkMode ? 'bg-gradient-to-r from-maroon/80 to-maroon-dark/80' : 'bg-gradient-to-r from-maroon to-maroon-dark'}`}>
+                            <div className="flex items-center gap-3">
+                                <FaTrophy className="w-6 h-6 text-gold" />
+                                <div>
+                                    <h3 className="text-lg font-semibold text-white">{event?.auditor_detailed_view ? '3. Average Ranks - Final Results' : 'Final Rankings'}</h3>
+                                    <p className="text-white/70 text-sm">Overall ranking based on average of all category ranks</p>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
 
                 {/* Table Content */}
                 <div className="p-6">
@@ -543,24 +595,25 @@ const AuditorResults = () => {
                             <p className="text-sm">Scores have not been submitted for this event.</p>
                         </div>
                     )}
-                </div>
-            </motion.div>
+                        </div>
+                    </motion.div>
+                )}
 
-            {/* Detailed Breakdown Section - Only shown when auditor_detailed_view is enabled */}
-            {event?.auditor_detailed_view && (
-                <>
-                    {/* TABLE 1: Judge Rankings by Criteria */}
+                {/* TABLE 1: Judge Rankings by Criteria - Only shown when judge-scores tab is active */}
+                {event?.auditor_detailed_view && activeScoreTab === 'judge-scores' && (
                     <motion.div
+                        key="judge-scores"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className={`mt-8 rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-lg'}`}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                        className={`rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-lg'}`}
                     >
                         <div className={`px-6 py-4 ${isDarkMode ? 'bg-gradient-to-r from-maroon/80 to-maroon-dark/80' : 'bg-gradient-to-r from-maroon to-maroon-dark'}`}>
                             <div className="flex items-center gap-3">
                                 <FaUserTie className="w-6 h-6 text-white" />
                                 <div>
-                                    <h3 className="text-lg font-semibold text-white">Judge Rankings by Criteria</h3>
+                                    <h3 className="text-lg font-semibold text-white">1. Judge Rankings by Criteria</h3>
                                     <p className="text-white/70 text-sm">View rankings per criteria with total score and overall rank</p>
                                 </div>
                             </div>
@@ -664,19 +717,23 @@ const AuditorResults = () => {
                             )}
                         </div>
                     </motion.div>
+                )}
 
-                    {/* TABLE 2: Scores by Judge */}
+                {/* TABLE 2: Scores by Judge - Only shown when average-scores tab is active */}
+                {event?.auditor_detailed_view && activeScoreTab === 'average-scores' && (
                     <motion.div
+                        key="average-scores"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4 }}
-                        className={`mt-8 rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-lg'}`}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
+                        className={`rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-lg'}`}
                     >
-                        <div className="bg-gradient-to-r from-purple-600 to-purple-800 px-6 py-4">
+                        <div className={`px-6 py-4 ${isDarkMode ? 'bg-gradient-to-r from-maroon/80 to-maroon-dark/80' : 'bg-gradient-to-r from-maroon to-maroon-dark'}`}>
                             <div className="flex items-center gap-3">
                                 <FaChartBar className="w-6 h-6 text-white" />
                                 <div>
-                                    <h3 className="text-lg font-semibold text-white">Scores by Judge / Average Judge Scores</h3>
+                                    <h3 className="text-lg font-semibold text-white">2. Scores by Judge / Average Judge Scores</h3>
                                     <p className="text-white/70 text-sm">View rankings from each judge and the average</p>
                                 </div>
                             </div>
@@ -771,8 +828,8 @@ const AuditorResults = () => {
                             )}
                         </div>
                     </motion.div>
-                </>
-            )}
+                )}
+            </AnimatePresence>
 
             {/* Event Info Footer */}
             <motion.div
