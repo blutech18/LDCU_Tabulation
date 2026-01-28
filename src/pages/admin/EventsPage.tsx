@@ -380,7 +380,7 @@ const EventsPage = () => {
                         {activeTab === 'criteria' && <CriteriaTab event={selectedEvent} />}
                         {activeTab === 'judges' && <JudgesTab event={selectedEvent} />}
                         {activeTab === 'scores' && <ScoresTab event={selectedEvent} />}
-                        {activeTab === 'settings' && <SettingsTab event={selectedEvent} onEdit={() => openEditModal(selectedEvent)} onDelete={() => openDeleteModal(selectedEvent)} />}
+                        {activeTab === 'settings' && <SettingsTab event={selectedEvent} onEdit={() => openEditModal(selectedEvent)} onDelete={() => openDeleteModal(selectedEvent)} onEventUpdate={(updated) => setSelectedEvent(updated)} />}
                     </motion.div>
                 </AnimatePresence>
 
@@ -3060,7 +3060,34 @@ const ScoresTab = ({ event }: { event: Event }) => {
             };
         });
 
-        // Sort by total descending and assign ranks
+        // Calculate rankings per criteria
+        const criteriaRankings: Record<number, Record<number, number | null>> = {};
+        criteria.forEach((c: any) => {
+            // Get all scores for this criteria and sort descending
+            const scoresForCriteria = participantScores
+                .map(ps => ({ participantId: ps.participant.id, score: ps.criteriaScores[c.id] || 0 }))
+                .sort((a, b) => b.score - a.score);
+            
+            const hasScoresForCriteria = scoresForCriteria.some(s => s.score > 0);
+            
+            criteriaRankings[c.id] = {};
+            scoresForCriteria.forEach((item, index) => {
+                let rank: number | null = null;
+                if (hasScoresForCriteria && item.score > 0) {
+                    if (index === 0) {
+                        rank = 1;
+                    } else if (item.score === scoresForCriteria[index - 1].score) {
+                        const firstWithSameScore = scoresForCriteria.findIndex(s => s.score === item.score);
+                        rank = firstWithSameScore + 1;
+                    } else {
+                        rank = index + 1;
+                    }
+                }
+                criteriaRankings[c.id][item.participantId] = rank;
+            });
+        });
+
+        // Sort by total descending and assign overall ranks
         const sorted = [...participantScores].sort((a, b) => b.total - a.total);
         const hasScores = sorted.some(p => p.total > 0);
 
@@ -3077,7 +3104,12 @@ const ScoresTab = ({ event }: { event: Event }) => {
                     rank = index + 1;
                 }
             }
-            return { ...item, rank };
+            // Add criteria rankings to each participant
+            const criteriaRanks: Record<number, number | null> = {};
+            criteria.forEach((c: any) => {
+                criteriaRanks[c.id] = criteriaRankings[c.id][item.participant.id];
+            });
+            return { ...item, rank, criteriaRanks };
         });
 
         return { criteria, participants: ranked };
@@ -3337,8 +3369,8 @@ const ScoresTab = ({ event }: { event: Event }) => {
             {/* TABLE 1: Judge Scores by Criteria */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 <div className="bg-gradient-to-r from-maroon to-maroon-dark px-6 py-4">
-                    <h3 className="text-lg font-semibold text-white">1. Judge Scores by Criteria</h3>
-                    <p className="text-white/70 text-sm mt-1">View individual judge scores with sub-criteria breakdown</p>
+                    <h3 className="text-lg font-semibold text-white">1. Judge Rankings by Criteria</h3>
+                    <p className="text-white/70 text-sm mt-1">View rankings per criteria with total score and overall rank</p>
                 </div>
                 <div className="p-6">
                     {/* Filters */}
@@ -3419,8 +3451,8 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                                 </div>
                                             </td>
                                             {table1Data.criteria.map((c: any) => (
-                                                <td key={c.id} className="border border-gray-200 px-4 py-3 text-center">
-                                                    {item.criteriaScores[c.id]?.toFixed(1) || '0'}
+                                                <td key={c.id} className="border border-gray-200 px-4 py-3 text-center text-gray-400">
+                                                    —
                                                 </td>
                                             ))}
                                             <td className="border border-gray-200 px-4 py-3 text-center font-bold text-maroon bg-maroon/5">
@@ -3663,7 +3695,28 @@ const ScoresTab = ({ event }: { event: Event }) => {
 };
 
 // Settings Tab Component
-const SettingsTab = ({ event, onEdit, onDelete }: { event: Event; onEdit: () => void; onDelete: () => void }) => {
+const SettingsTab = ({ event, onEdit, onDelete, onEventUpdate }: { event: Event; onEdit: () => void; onDelete: () => void; onEventUpdate?: (updatedEvent: Event) => void }) => {
+    const [auditorDetailedView, setAuditorDetailedView] = useState(event.auditor_detailed_view || false);
+    const [saving, setSaving] = useState(false);
+
+    const handleToggleAuditorDetailedView = async () => {
+        setSaving(true);
+        const newValue = !auditorDetailedView;
+        
+        const { error } = await supabase
+            .from('events')
+            .update({ auditor_detailed_view: newValue })
+            .eq('id', event.id);
+        
+        if (!error) {
+            setAuditorDetailedView(newValue);
+            if (onEventUpdate) {
+                onEventUpdate({ ...event, auditor_detailed_view: newValue });
+            }
+        }
+        setSaving(false);
+    };
+
     return (
         <div className="space-y-6">
             <div className="bg-white border border-gray-200 rounded-xl p-6">
@@ -3695,6 +3748,32 @@ const SettingsTab = ({ event, onEdit, onDelete }: { event: Event; onEdit: () => 
                     <button onClick={onEdit} className="btn-secondary flex-1 flex items-center justify-center gap-2">
                         <FaEdit className="w-4 h-4" />
                         Edit Event
+                    </button>
+                </div>
+            </div>
+
+            {/* Auditor Settings */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Auditor Settings</h3>
+                <div className="flex items-center justify-between py-3">
+                    <div>
+                        <p className="font-medium text-gray-900">Allow Detailed Score Breakdown</p>
+                        <p className="text-sm text-gray-500 mt-1">
+                            When enabled, auditors can view detailed score breakdowns by judge and criteria, similar to the admin scores page.
+                        </p>
+                    </div>
+                    <button
+                        onClick={handleToggleAuditorDetailedView}
+                        disabled={saving}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            auditorDetailedView ? 'bg-maroon' : 'bg-gray-300'
+                        } ${saving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                        <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                auditorDetailedView ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                        />
                     </button>
                 </div>
             </div>

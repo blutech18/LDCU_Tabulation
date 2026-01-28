@@ -20,6 +20,7 @@ export interface Event {
     venue?: string;
     participant_type: 'individual' | 'group';
     status: 'draft' | 'ongoing' | 'completed';
+    auditor_detailed_view?: boolean;
     created_at: string;
 }
 

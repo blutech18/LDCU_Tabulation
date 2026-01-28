@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FaTrophy, FaMedal, FaChartBar, FaMars, FaVenus } from 'react-icons/fa';
+import { FaTrophy, FaMedal, FaChartBar, FaMars, FaVenus, FaUserTie } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Auditor, Category, Criteria, Participant, Judge, Score, Event } from '../../types';
 
@@ -20,6 +20,11 @@ const AuditorResults = () => {
     const [criteriaMap, setCriteriaMap] = useState<Record<number, Criteria[]>>({});
     const [loading, setLoading] = useState(true);
     const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
+
+    // Detailed view filters
+    const [selectedJudge, setSelectedJudge] = useState<number | null>(null);
+    const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+    const [selectedCategoryForTable2, setSelectedCategoryForTable2] = useState<number | null>(null);
 
     const isIndividual = event?.participant_type === 'individual';
 
@@ -211,7 +216,150 @@ const AuditorResults = () => {
         return ranked;
     };
 
+    // ==================== TABLE 1: Judge Rankings by Criteria (Detailed View) ====================
+    const getTable1Data = () => {
+        if (!selectedJudge || !selectedCategory) return null;
+
+        const criteria = criteriaMap[selectedCategory] || [];
+        const filteredParticipants = getFilteredParticipants();
+
+        const participantScores = filteredParticipants.map(participant => {
+            const criteriaScores: Record<number, number> = {};
+            let total = 0;
+
+            criteria.forEach((c: Criteria) => {
+                const score = scores.find(
+                    s => s.judge_id === selectedJudge &&
+                        s.participant_id === participant.id &&
+                        s.criteria_id === c.id
+                );
+                const scoreValue = score?.score ?? 0;
+                criteriaScores[c.id] = scoreValue;
+                total += scoreValue;
+            });
+
+            return { participant, criteriaScores, total };
+        });
+
+        const sorted = [...participantScores].sort((a, b) => b.total - a.total);
+        const hasScores = sorted.some(p => p.total > 0);
+
+        const ranked = sorted.map((item, index) => {
+            let rank: number | null = null;
+            if (hasScores && item.total > 0) {
+                if (index === 0) {
+                    rank = 1;
+                } else if (item.total === sorted[index - 1].total) {
+                    const firstWithSameScore = sorted.findIndex(s => s.total === item.total);
+                    rank = firstWithSameScore + 1;
+                } else {
+                    rank = index + 1;
+                }
+            }
+            return { ...item, rank };
+        });
+
+        return { criteria, participants: ranked };
+    };
+
+    // ==================== TABLE 2: Scores by Judge (Detailed View) ====================
+    const getTable2Data = () => {
+        if (!selectedCategoryForTable2) return null;
+
+        const category = categories.find(c => c.id === selectedCategoryForTable2);
+        if (!category) return null;
+
+        const criteria = criteriaMap[selectedCategoryForTable2] || [];
+        const filteredParticipants = getFilteredParticipants();
+
+        const judgesWithScores = judges.filter(judge => {
+            return scores.some(s =>
+                s.judge_id === judge.id &&
+                criteria.some((c: Criteria) => c.id === s.criteria_id)
+            );
+        });
+
+        const participantData = filteredParticipants.map(participant => {
+            const judgeRanks: Record<number, { total: number; rank: number | null }> = {};
+
+            judgesWithScores.forEach(judge => {
+                let total = 0;
+                criteria.forEach((c: Criteria) => {
+                    const score = scores.find(
+                        s => s.judge_id === judge.id &&
+                            s.participant_id === participant.id &&
+                            s.criteria_id === c.id
+                    );
+                    total += score?.score ?? 0;
+                });
+                judgeRanks[judge.id] = { total, rank: null };
+            });
+
+            return { participant, judgeRanks };
+        });
+
+        judgesWithScores.forEach(judge => {
+            const participantsForJudge = participantData
+                .map(p => ({ id: p.participant.id, total: p.judgeRanks[judge.id]?.total ?? 0 }))
+                .sort((a, b) => b.total - a.total);
+
+            const hasScores = participantsForJudge.some(p => p.total > 0);
+
+            participantsForJudge.forEach((item, index) => {
+                const pData = participantData.find(p => p.participant.id === item.id);
+                if (pData && pData.judgeRanks[judge.id]) {
+                    if (!hasScores || item.total === 0) {
+                        pData.judgeRanks[judge.id].rank = null;
+                    } else if (index === 0) {
+                        pData.judgeRanks[judge.id].rank = 1;
+                    } else if (item.total === participantsForJudge[index - 1].total) {
+                        const firstWithSameScore = participantsForJudge.findIndex(s => s.total === item.total);
+                        pData.judgeRanks[judge.id].rank = firstWithSameScore + 1;
+                    } else {
+                        pData.judgeRanks[judge.id].rank = index + 1;
+                    }
+                }
+            });
+        });
+
+        const participantsWithAvg = participantData.map(p => {
+            const ranks = Object.values(p.judgeRanks)
+                .map(jr => jr.rank)
+                .filter((r): r is number => r !== null);
+            const sumRanks = ranks.reduce((a, b) => a + b, 0);
+            const judgeCount = ranks.length;
+            const results = judgeCount > 0 ? sumRanks / judgeCount : null;
+            return { ...p, sumRanks, judgeCount, results };
+        });
+
+        const sorted = [...participantsWithAvg].sort((a, b) => {
+            if (a.results === null && b.results === null) return 0;
+            if (a.results === null) return 1;
+            if (b.results === null) return -1;
+            return a.results - b.results;
+        });
+
+        const ranked = sorted.map((item, index) => {
+            let finalRank: number | null = null;
+            if (item.results !== null) {
+                if (index === 0) {
+                    finalRank = 1;
+                } else if (item.results === sorted[index - 1].results) {
+                    const firstWithSameResults = sorted.findIndex(s => s.results === item.results);
+                    finalRank = firstWithSameResults + 1;
+                } else {
+                    finalRank = index + 1;
+                }
+            }
+            return { ...item, finalRank };
+        });
+
+        return { judges: judgesWithScores, participants: ranked, category };
+    };
+
     const resultsData = getResultsData();
+    const table1Data = event?.auditor_detailed_view ? getTable1Data() : null;
+    const table2Data = event?.auditor_detailed_view ? getTable2Data() : null;
 
     if (loading) {
         return (
@@ -397,6 +545,234 @@ const AuditorResults = () => {
                     )}
                 </div>
             </motion.div>
+
+            {/* Detailed Breakdown Section - Only shown when auditor_detailed_view is enabled */}
+            {event?.auditor_detailed_view && (
+                <>
+                    {/* TABLE 1: Judge Rankings by Criteria */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className={`mt-8 rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-lg'}`}
+                    >
+                        <div className={`px-6 py-4 ${isDarkMode ? 'bg-gradient-to-r from-maroon/80 to-maroon-dark/80' : 'bg-gradient-to-r from-maroon to-maroon-dark'}`}>
+                            <div className="flex items-center gap-3">
+                                <FaUserTie className="w-6 h-6 text-white" />
+                                <div>
+                                    <h3 className="text-lg font-semibold text-white">Judge Rankings by Criteria</h3>
+                                    <p className="text-white/70 text-sm">View rankings per criteria with total score and overall rank</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                <div>
+                                    <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-white/80' : 'text-gray-700'}`}>Select Judge</label>
+                                    <select
+                                        value={selectedJudge || ''}
+                                        onChange={(e) => setSelectedJudge(e.target.value ? Number(e.target.value) : null)}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                    >
+                                        <option value="">-- Select a Judge --</option>
+                                        {judges.map(judge => (
+                                            <option key={judge.id} value={judge.id}>{judge.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-white/80' : 'text-gray-700'}`}>Select Category</label>
+                                    <select
+                                        value={selectedCategory || ''}
+                                        onChange={(e) => setSelectedCategory(e.target.value ? Number(e.target.value) : null)}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                    >
+                                        <option value="">-- Select a Category --</option>
+                                        {categories.map(category => (
+                                            <option key={category.id} value={category.id}>{category.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {table1Data ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse">
+                                        <thead>
+                                            <tr className={isDarkMode ? 'bg-white/5' : 'bg-gray-50'}>
+                                                <th className={`border px-4 py-3 text-left font-semibold ${isDarkMode ? 'border-white/10 text-white' : 'border-gray-200 text-gray-900'}`}>
+                                                    Participant
+                                                </th>
+                                                {table1Data.criteria.map((c: Criteria) => (
+                                                    <th key={c.id} className={`border px-4 py-3 text-center font-semibold ${isDarkMode ? 'border-white/10 text-white' : 'border-gray-200 text-gray-900'}`}>
+                                                        <div>{c.name}</div>
+                                                        <div className={`text-xs font-normal ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                                            {c.percentage > 0 ? `${c.percentage}%` : ''}
+                                                        </div>
+                                                    </th>
+                                                ))}
+                                                <th className={`border px-4 py-3 text-center font-semibold ${isDarkMode ? 'border-white/10 text-white bg-maroon/20' : 'border-gray-200 text-gray-900 bg-maroon/10'}`}>
+                                                    Total
+                                                </th>
+                                                <th className={`border px-4 py-3 text-center font-semibold ${isDarkMode ? 'border-white/10 text-white bg-yellow-500/20' : 'border-gray-200 text-gray-900 bg-yellow-50'}`}>
+                                                    Rank
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {table1Data.participants.map((item, index) => (
+                                                <tr key={item.participant.id} className={index % 2 === 0 ? (isDarkMode ? 'bg-white/5' : 'bg-white') : (isDarkMode ? 'bg-white/10' : 'bg-gray-50')}>
+                                                    <td className={`border px-4 py-3 ${isDarkMode ? 'border-white/10' : 'border-gray-200'}`}>
+                                                        <div className="flex items-center gap-3">
+                                                            {item.participant.photo_url ? (
+                                                                <img src={item.participant.photo_url} alt={item.participant.name} className="w-8 h-8 rounded-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-8 h-8 rounded-full bg-maroon flex items-center justify-center text-white text-sm font-bold">
+                                                                    {item.participant.name.charAt(0)}
+                                                                </div>
+                                                            )}
+                                                            <div>
+                                                                <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.participant.name}</p>
+                                                                <p className={`text-sm ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>{item.participant.department}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    {table1Data.criteria.map((c: Criteria) => (
+                                                        <td key={c.id} className={`border px-4 py-3 text-center ${isDarkMode ? 'border-white/10 text-white/40' : 'border-gray-200 text-gray-400'}`}>
+                                                            —
+                                                        </td>
+                                                    ))}
+                                                    <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 text-maroon-light bg-maroon/10' : 'border-gray-200 text-maroon bg-maroon/5'}`}>
+                                                        {item.total.toFixed(1)}
+                                                    </td>
+                                                    <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 bg-yellow-500/10' : 'border-gray-200 bg-yellow-50'}`}>
+                                                        {item.rank !== null ? (
+                                                            <span className={item.rank === 1 ? 'text-yellow-600' : item.rank === 2 ? 'text-gray-500' : item.rank === 3 ? 'text-amber-600' : isDarkMode ? 'text-white' : 'text-gray-600'}>
+                                                                {getOrdinal(item.rank)}
+                                                            </span>
+                                                        ) : '—'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className={`text-center py-8 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                    Select a judge and category to view rankings
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+
+                    {/* TABLE 2: Scores by Judge */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.4 }}
+                        className={`mt-8 rounded-2xl overflow-hidden ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border border-white/10' : 'bg-white border border-gray-200 shadow-lg'}`}
+                    >
+                        <div className="bg-gradient-to-r from-purple-600 to-purple-800 px-6 py-4">
+                            <div className="flex items-center gap-3">
+                                <FaChartBar className="w-6 h-6 text-white" />
+                                <div>
+                                    <h3 className="text-lg font-semibold text-white">Scores by Judge / Average Judge Scores</h3>
+                                    <p className="text-white/70 text-sm">View rankings from each judge and the average</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6">
+                            <div className="mb-6">
+                                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-white/80' : 'text-gray-700'}`}>Select Category</label>
+                                <select
+                                    value={selectedCategoryForTable2 || ''}
+                                    onChange={(e) => setSelectedCategoryForTable2(e.target.value ? Number(e.target.value) : null)}
+                                    className={`w-full max-w-md px-4 py-2 rounded-lg border ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                >
+                                    <option value="">-- Select a Category --</option>
+                                    {categories.map(category => (
+                                        <option key={category.id} value={category.id}>{category.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {table2Data ? (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse">
+                                        <thead>
+                                            <tr className={isDarkMode ? 'bg-white/5' : 'bg-gray-50'}>
+                                                <th className={`border px-4 py-3 text-left font-semibold ${isDarkMode ? 'border-white/10 text-white' : 'border-gray-200 text-gray-900'}`}>
+                                                    Participant
+                                                </th>
+                                                {table2Data.judges.map((judge) => (
+                                                    <th key={judge.id} className={`border px-4 py-3 text-center font-semibold ${isDarkMode ? 'border-white/10 text-white' : 'border-gray-200 text-gray-900'}`}>
+                                                        {judge.name}
+                                                    </th>
+                                                ))}
+                                                <th className={`border px-4 py-3 text-center font-semibold ${isDarkMode ? 'border-white/10 text-white bg-blue-500/20' : 'border-gray-200 text-gray-900 bg-blue-50'}`}>
+                                                    Sum
+                                                </th>
+                                                <th className={`border px-4 py-3 text-center font-semibold ${isDarkMode ? 'border-white/10 text-white bg-purple-500/20' : 'border-gray-200 text-gray-900 bg-purple-50'}`}>
+                                                    <div>Results</div>
+                                                    <div className={`text-xs font-normal ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>(Sum ÷ Count)</div>
+                                                </th>
+                                                <th className={`border px-4 py-3 text-center font-semibold ${isDarkMode ? 'border-white/10 text-white bg-yellow-500/20' : 'border-gray-200 text-gray-900 bg-yellow-50'}`}>
+                                                    Final Rank
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {table2Data.participants.map((item, index) => (
+                                                <tr key={item.participant.id} className={index % 2 === 0 ? (isDarkMode ? 'bg-white/5' : 'bg-white') : (isDarkMode ? 'bg-white/10' : 'bg-gray-50')}>
+                                                    <td className={`border px-4 py-3 ${isDarkMode ? 'border-white/10' : 'border-gray-200'}`}>
+                                                        <div className="flex items-center gap-3">
+                                                            {item.participant.photo_url ? (
+                                                                <img src={item.participant.photo_url} alt={item.participant.name} className="w-8 h-8 rounded-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                                                                    {item.participant.name.charAt(0)}
+                                                                </div>
+                                                            )}
+                                                            <div>
+                                                                <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.participant.name}</p>
+                                                                <p className={`text-sm ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>{item.participant.department}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    {table2Data.judges.map((judge) => (
+                                                        <td key={judge.id} className={`border px-4 py-3 text-center ${isDarkMode ? 'border-white/10' : 'border-gray-200'}`}>
+                                                            {item.judgeRanks[judge.id]?.rank !== null ? (
+                                                                <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.judgeRanks[judge.id].rank}</span>
+                                                            ) : '—'}
+                                                        </td>
+                                                    ))}
+                                                    <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 text-blue-300 bg-blue-500/10' : 'border-gray-200 text-blue-700 bg-blue-50'}`}>
+                                                        {item.judgeCount > 0 ? item.sumRanks : '—'}
+                                                    </td>
+                                                    <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 text-purple-300 bg-purple-500/10' : 'border-gray-200 text-purple-700 bg-purple-50'}`}>
+                                                        {item.results !== null ? item.results.toFixed(2) : '—'}
+                                                    </td>
+                                                    <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 bg-yellow-500/10' : 'border-gray-200 bg-yellow-50'}`}>
+                                                        {item.finalRank !== null ? (
+                                                            <span className={item.finalRank === 1 ? 'text-yellow-600' : item.finalRank === 2 ? 'text-gray-500' : item.finalRank === 3 ? 'text-amber-600' : isDarkMode ? 'text-white' : 'text-gray-600'}>
+                                                                {getOrdinal(item.finalRank)}
+                                                            </span>
+                                                        ) : '—'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className={`text-center py-8 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                    Select a category to view judge scores
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                </>
+            )}
 
             {/* Event Info Footer */}
             <motion.div
