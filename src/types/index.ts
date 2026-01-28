@@ -33,6 +33,7 @@ export interface Category {
     score_max: number;
     photo_url?: string;
     display_order: number;
+    top_display?: number | null;
     created_at: string;
 }
 
