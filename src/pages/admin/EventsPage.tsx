@@ -3490,18 +3490,17 @@ const ScoresTab = ({ event }: { event: Event }) => {
             return a.avgRank - b.avgRank;
         });
 
-        // Assign final ranks
-        const ranked = sorted.map((item, index) => {
+        // Use dense ranking (1st, 2nd, 2nd, 3rd) instead of competition ranking (1st, 2nd, 2nd, 4th)
+        let currentRank = 0;
+        let previousAvgRank: number | null = null;
+        const ranked = sorted.map((item) => {
             let finalRank: number | null = null;
             if (item.avgRank !== null) {
-                if (index === 0) {
-                    finalRank = 1;
-                } else if (item.avgRank === sorted[index - 1].avgRank) {
-                    const firstWithSameAvg = sorted.findIndex(s => s.avgRank === item.avgRank);
-                    finalRank = firstWithSameAvg + 1;
-                } else {
-                    finalRank = index + 1;
+                if (item.avgRank !== previousAvgRank) {
+                    currentRank++;
                 }
+                finalRank = currentRank;
+                previousAvgRank = item.avgRank;
             }
             return { ...item, finalRank };
         });

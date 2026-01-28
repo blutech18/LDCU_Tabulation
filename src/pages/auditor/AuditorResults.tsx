@@ -253,17 +253,17 @@ const AuditorResults = () => {
             return a.results - b.results;
         });
 
-        const ranked = sorted.map((item, index) => {
+        // Use dense ranking (1st, 2nd, 2nd, 3rd) instead of competition ranking (1st, 2nd, 2nd, 4th)
+        let currentRank = 0;
+        let previousResults: number | null = null;
+        const ranked = sorted.map((item) => {
             let finalRank: number | null = null;
             if (item.results !== null) {
-                if (index === 0) {
-                    finalRank = 1;
-                } else if (item.results === sorted[index - 1].results) {
-                    const firstWithSameResults = sorted.findIndex(s => s.results === item.results);
-                    finalRank = firstWithSameResults + 1;
-                } else {
-                    finalRank = index + 1;
+                if (item.results !== previousResults) {
+                    currentRank++;
                 }
+                finalRank = currentRank;
+                previousResults = item.results;
             }
             return { ...item, finalRank };
         });
