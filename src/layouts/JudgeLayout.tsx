@@ -47,8 +47,16 @@ const JudgeLayout = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md ${isDarkMode ? 'bg-gradient-to-br from-primary-400 to-accent-500 text-white' : 'bg-white text-maroon'}`}>
-                                {judge.name.charAt(0).toUpperCase()}
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md overflow-hidden ${isDarkMode ? 'bg-gradient-to-br from-primary-400 to-accent-500 text-white' : 'bg-white text-maroon'}`}>
+                                {judge.photo_url ? (
+                                    <img 
+                                        src={judge.photo_url} 
+                                        alt={judge.name} 
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    judge.name.charAt(0).toUpperCase()
+                                )}
                             </div>
                             <div>
                                 <p className="text-white font-semibold">

@@ -6,18 +6,19 @@ import type { Judge } from '../../types';
 
 interface JudgeContext {
     judge: Judge;
+    isDarkMode: boolean;
 }
 
 const Finished = () => {
     const navigate = useNavigate();
-    const { judge } = useOutletContext<JudgeContext>();
+    const { judge, isDarkMode } = useOutletContext<JudgeContext>();
 
     useEffect(() => {
         // Confetti or celebration effect could be added here
     }, []);
 
     return (
-        <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className={`min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 ${isDarkMode ? '' : 'bg-gradient-to-br from-gray-50 to-gray-100'}`}>
             <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -39,7 +40,7 @@ const Finished = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
-                    className="text-3xl font-bold text-maroon mb-3"
+                    className={`text-3xl font-bold mb-3 ${isDarkMode ? 'text-white' : 'text-maroon'}`}
                 >
                     All Done!
                 </motion.h1>
@@ -47,7 +48,7 @@ const Finished = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4 }}
-                    className="text-gray-600 text-lg mb-8"
+                    className={`text-lg mb-8 ${isDarkMode ? 'text-white/60' : 'text-gray-600'}`}
                 >
                     Your scores have been submitted successfully. Thank you, Judge {judge?.name}!
                 </motion.p>

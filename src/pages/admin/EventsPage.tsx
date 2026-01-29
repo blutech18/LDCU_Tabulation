@@ -44,6 +44,23 @@ const tabs: Tab[] = [
     { id: 'settings', label: 'Settings', icon: <FaCog /> },
 ];
 
+const getEventStatus = (event: Event): 'Upcoming' | 'Ongoing' | 'Finished' => {
+    const now = new Date();
+    const start = event.event_start ? new Date(event.event_start) : new Date(event.date);
+    
+    let end;
+    if (event.event_end) {
+        end = new Date(event.event_end);
+    } else {
+        end = new Date(start);
+        end.setHours(23, 59, 59, 999);
+    }
+    
+    if (now < start) return 'Upcoming';
+    if (now >= start && now <= end) return 'Ongoing';
+    return 'Finished';
+};
+
 const EventsPage = () => {
     const { eventId } = useParams();
     const navigate = useNavigate();
@@ -60,8 +77,12 @@ const EventsPage = () => {
     const [newEventEndDate, setNewEventEndDate] = useState('');
     const [newEventEndTime, setNewEventEndTime] = useState('');
     const [newEventVenue, setNewEventVenue] = useState('');
-    const [newEventDescription, setNewEventDescription] = useState('');
     const [newEventParticipantType, setNewEventParticipantType] = useState<'individual' | 'group'>('individual');
+
+    // Image upload states
+    const [eventImageFile, setEventImageFile] = useState<File | null>(null);
+    const [eventImagePreview, setEventImagePreview] = useState<string>('');
+    const [uploading, setUploading] = useState(false);
 
     // Edit Event Modal
     const [showEditModal, setShowEditModal] = useState(false);
@@ -70,6 +91,53 @@ const EventsPage = () => {
     // Delete Confirmation Modal
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deletingEvent, setDeletingEvent] = useState<Event | null>(null);
+
+    // Image upload handler
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            alert('Please upload a JPG, PNG, or WebP image');
+            return;
+        }
+
+        // Validate file size (5MB max)
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image size must be less than 5MB');
+            return;
+        }
+
+        setEventImageFile(file);
+        setEventImagePreview(URL.createObjectURL(file));
+    };
+
+    const removeImage = () => {
+        setEventImageFile(null);
+        setEventImagePreview('');
+    };
+
+    const uploadImage = async (file: File): Promise<string | null> => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `event_${Date.now()}.${fileExt}`;
+
+        const { error } = await supabase.storage
+            .from('tabulation-event')
+            .upload(fileName, file);
+
+        if (error) {
+            console.error('Upload error:', error);
+            alert(`Failed to upload image: ${error.message}`);
+            return null;
+        }
+
+        const { data: urlData } = supabase.storage
+            .from('tabulation-event')
+            .getPublicUrl(fileName);
+
+        return urlData.publicUrl;
+    };
 
     useEffect(() => {
         fetchEvents();
@@ -95,6 +163,12 @@ const EventsPage = () => {
 
     const handleAddEvent = async () => {
         if (!newEventName || !newEventStartDate) return;
+        setUploading(true);
+
+        let photoUrl = null;
+        if (eventImageFile) {
+            photoUrl = await uploadImage(eventImageFile);
+        }
 
         // Combine date and time for start/end timestamps
         const eventStart = newEventStartDate
@@ -110,10 +184,11 @@ const EventsPage = () => {
             event_start: eventStart,
             event_end: eventEnd,
             venue: newEventVenue || null,
-            description: newEventDescription || null,
+            photo_url: photoUrl,
             participant_type: newEventParticipantType,
         });
 
+        setUploading(false);
         if (!error) {
             fetchEvents();
             closeAddModal();
@@ -125,6 +200,12 @@ const EventsPage = () => {
 
     const handleEditEvent = async () => {
         if (!editingEvent || !newEventName || !newEventStartDate) return;
+        setUploading(true);
+
+        let photoUrl = editingEvent.photo_url || null;
+        if (eventImageFile) {
+            photoUrl = await uploadImage(eventImageFile);
+        }
 
         // Combine date and time for start/end timestamps
         const eventStart = newEventStartDate
@@ -142,11 +223,12 @@ const EventsPage = () => {
                 event_start: eventStart,
                 event_end: eventEnd,
                 venue: newEventVenue || null,
-                description: newEventDescription || null,
+                photo_url: photoUrl,
                 participant_type: newEventParticipantType,
             })
             .eq('id', editingEvent.id);
 
+        setUploading(false);
         if (!error) {
             fetchEvents();
             closeEditModal();
@@ -159,7 +241,7 @@ const EventsPage = () => {
                     event_start: eventStart || undefined,
                     event_end: eventEnd || undefined,
                     venue: newEventVenue,
-                    description: newEventDescription,
+                    photo_url: photoUrl || undefined,
                 });
             }
         } else {
@@ -196,8 +278,9 @@ const EventsPage = () => {
         setNewEventEndDate('');
         setNewEventEndTime('');
         setNewEventVenue('');
-        setNewEventDescription('');
         setNewEventParticipantType('individual');
+        setEventImageFile(null);
+        setEventImagePreview('');
     };
 
     const closeEditModal = () => {
@@ -209,8 +292,9 @@ const EventsPage = () => {
         setNewEventEndDate('');
         setNewEventEndTime('');
         setNewEventVenue('');
-        setNewEventDescription('');
         setNewEventParticipantType('individual');
+        setEventImageFile(null);
+        setEventImagePreview('');
     };
 
     const openEditModal = (event: Event) => {
@@ -238,7 +322,7 @@ const EventsPage = () => {
         }
 
         setNewEventVenue(event.venue || '');
-        setNewEventDescription(event.description || '');
+        setEventImagePreview(event.photo_url || '');
         setNewEventParticipantType(event.participant_type || 'individual');
         setShowEditModal(true);
     };
@@ -280,9 +364,18 @@ const EventsPage = () => {
                         <FaChevronLeft className="w-4 h-4 ml-[-2px]" />
                     </button>
                     <div className="flex flex-col gap-1">
-                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight leading-none">
-                            {selectedEvent.name}
-                        </h1>
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-3xl font-bold text-gray-900 tracking-tight leading-none">
+                                {selectedEvent.name}
+                            </h1>
+                            <span className={`text-sm px-3 py-1 rounded-full border font-medium ${
+                                getEventStatus(selectedEvent) === 'Upcoming' ? 'bg-white text-maroon border-maroon' :
+                                getEventStatus(selectedEvent) === 'Ongoing' ? 'bg-maroon text-white border-maroon animate-pulse' :
+                                'bg-gray-100 text-gray-600 border-gray-200'
+                            }`}>
+                                {getEventStatus(selectedEvent)}
+                            </span>
+                        </div>
                         <div className="flex items-center flex-wrap gap-x-4 gap-y-2 text-sm text-gray-500 font-medium">
                             {/* Date */}
                             <div className="flex items-center gap-2">
@@ -389,82 +482,141 @@ const EventsPage = () => {
                     isOpen={showEditModal}
                     onClose={closeEditModal}
                     title="Edit Event"
+                    size="2xl"
                 >
-                    <div className="space-y-4">
-                        <div>
-                            <label className="form-label">Event Name *</label>
-                            <input
-                                type="text"
-                                value={newEventName}
-                                onChange={(e) => setNewEventName(e.target.value)}
-                                placeholder="e.g., Mr. & Ms. LDCU 2024"
-                                className="form-input"
-                                autoFocus
-                            />
-                        </div>
-
-                        {/* Start Date & Time */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="form-label">Start Date *</label>
+                    <div className="space-y-3">
+                        {/* Row 1: Event Name and Venue */}
+                        <div className="grid grid-cols-1 md:grid-cols-10 gap-4">
+                            <div className="md:col-span-6">
+                                <label className="form-label">Event Name *</label>
                                 <input
-                                    type="date"
-                                    value={newEventStartDate}
-                                    onChange={(e) => setNewEventStartDate(e.target.value)}
+                                    type="text"
+                                    value={newEventName}
+                                    onChange={(e) => setNewEventName(e.target.value)}
+                                    placeholder="e.g., Mr. & Ms. LDCU 2024"
                                     className="form-input"
+                                    autoFocus
                                 />
                             </div>
-                            <div>
-                                <label className="form-label">Start Time (Optional)</label>
+                            <div className="md:col-span-4">
+                                <label className="form-label">Venue (Optional)</label>
                                 <input
-                                    type="time"
-                                    value={newEventStartTime}
-                                    onChange={(e) => setNewEventStartTime(e.target.value)}
+                                    type="text"
+                                    value={newEventVenue}
+                                    onChange={(e) => setNewEventVenue(e.target.value)}
+                                    placeholder="e.g., LDCU Gymnasium"
                                     className="form-input"
                                 />
                             </div>
                         </div>
 
-                        {/* End Date & Time */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="form-label">End Date (Optional)</label>
-                                <input
-                                    type="date"
-                                    value={newEventEndDate}
-                                    onChange={(e) => setNewEventEndDate(e.target.value)}
-                                    className="form-input"
-                                />
+                        {/* Combined Row 2 & 3: Dates, Times, and Participant Type */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-2 space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="form-label">Start Date *</label>
+                                        <input
+                                            type="date"
+                                            value={newEventStartDate}
+                                            onChange={(e) => setNewEventStartDate(e.target.value)}
+                                            className="form-input"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">Start Time</label>
+                                        <input
+                                            type="time"
+                                            value={newEventStartTime}
+                                            onChange={(e) => setNewEventStartTime(e.target.value)}
+                                            className="form-input"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="form-label">End Date</label>
+                                        <input
+                                            type="date"
+                                            value={newEventEndDate}
+                                            onChange={(e) => setNewEventEndDate(e.target.value)}
+                                            className="form-input"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="form-label">End Time</label>
+                                        <input
+                                            type="time"
+                                            value={newEventEndTime}
+                                            onChange={(e) => setNewEventEndTime(e.target.value)}
+                                            className="form-input"
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <label className="form-label">End Time (Optional)</label>
-                                <input
-                                    type="time"
-                                    value={newEventEndTime}
-                                    onChange={(e) => setNewEventEndTime(e.target.value)}
-                                    className="form-input"
-                                />
+                            <div className="flex flex-col">
+                                <label className="form-label text-maroon font-semibold">Participant Type *</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setNewEventParticipantType('individual')}
+                                    className={`w-full h-[42px] px-4 rounded-lg border text-sm font-medium transition-all ${newEventParticipantType === 'individual'
+                                        ? 'bg-maroon text-white border-maroon shadow-sm'
+                                        : 'bg-white text-gray-600 border-gray-200 hover:border-maroon/50 hover:text-maroon'
+                                        }`}
+                                >
+                                    Individual
+                                </button>
+                                <div className="h-[42px] flex items-center justify-center">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">— Or —</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setNewEventParticipantType('group')}
+                                    className={`w-full h-[42px] px-4 rounded-lg border text-sm font-medium transition-all ${newEventParticipantType === 'group'
+                                        ? 'bg-maroon text-white border-maroon shadow-sm'
+                                        : 'bg-white text-gray-600 border-gray-200 hover:border-maroon/50 hover:text-maroon'
+                                        }`}
+                                >
+                                    Group
+                                </button>
                             </div>
                         </div>
 
+                        {/* Row 4: Event Photo */}
                         <div>
-                            <label className="form-label">Venue (Optional)</label>
-                            <input
-                                type="text"
-                                value={newEventVenue}
-                                onChange={(e) => setNewEventVenue(e.target.value)}
-                                placeholder="e.g., LDCU Gymnasium"
-                                className="form-input"
-                            />
-                        </div>
-                        <div>
-                            <label className="form-label">Description (Optional)</label>
-                            <textarea
-                                value={newEventDescription}
-                                onChange={(e) => setNewEventDescription(e.target.value)}
-                                placeholder="Add a brief description of the event..."
-                                className="form-input min-h-[80px] resize-none"
-                            />
+                            <label className="form-label">Event Photo (Optional)</label>
+                            {eventImagePreview ? (
+                                <div className="flex justify-center py-2">
+                                    <div className="relative">
+                                        <img
+                                            src={eventImagePreview}
+                                            alt="Event preview"
+                                            className="w-full max-w-sm h-32 object-cover rounded-xl border border-gray-200 shadow-sm"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={removeImage}
+                                            className="absolute top-2 right-2 w-8 h-8 bg-red-500/90 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md backdrop-blur-sm"
+                                        >
+                                            <FaTimes className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-maroon/50 hover:bg-gray-50 transition-all group">
+                                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                        <FaImage className="w-6 h-6 text-gray-400 group-hover:text-maroon/70" />
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-600 group-hover:text-maroon">Click to upload event photo</span>
+                                    <span className="text-xs text-gray-400 mt-1">JPG, PNG or WebP (Max 5MB)</span>
+                                    <input
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp"
+                                        onChange={handleImageChange}
+                                        className="hidden"
+                                    />
+                                </label>
+                            )}
                         </div>
                     </div>
                     <div className="flex gap-3 mt-6">
@@ -473,10 +625,10 @@ const EventsPage = () => {
                         </button>
                         <button
                             onClick={handleEditEvent}
-                            disabled={!newEventName || !newEventStartDate}
+                            disabled={!newEventName || !newEventStartDate || uploading}
                             className="btn-primary flex-1"
                         >
-                            Save Changes
+                            {uploading ? 'Saving...' : 'Save Changes'}
                         </button>
                     </div>
                 </Modal>
@@ -548,108 +700,124 @@ const EventsPage = () => {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {events.map((event, index) => (
                         <motion.div
                             key={event.id}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.3, delay: index * 0.05 }}
-                            className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-maroon/30 transition-all duration-200 group"
+                            className="relative h-64 rounded-2xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 group cursor-pointer bg-gray-900"
+                            onClick={() => handleSelectEvent(event)}
                         >
-                            {/* Card Header - Maroon with Date and Action Buttons */}
-                            <div className="bg-gradient-to-r from-maroon to-maroon-dark p-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-lg bg-white/20 backdrop-blur flex items-center justify-center">
-                                            <FaCalendarAlt className="w-5 h-5 text-white" />
-                                        </div>
-                                        <h3 className="text-white font-bold text-lg leading-tight">
-                                            {event.name}
-                                        </h3>
-                                    </div>
-                                    {/* Action Buttons */}
-                                    <div className="flex items-center gap-1">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                openEditModal(event);
-                                            }}
-                                            className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                                            title="Edit Event"
-                                        >
-                                            <FaEdit className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                openDeleteModal(event);
-                                            }}
-                                            className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                                            title="Delete Event"
-                                        >
-                                            <FaTrash className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
+                            {/* Status Badge */}
+                            <div className="absolute top-4 left-4 z-20">
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold border backdrop-blur-md shadow-sm ${
+                                    getEventStatus(event) === 'Upcoming' ? 'bg-white/90 text-maroon border-white/50' :
+                                    getEventStatus(event) === 'Ongoing' ? 'bg-maroon/90 text-white border-maroon/50 animate-pulse' :
+                                    'bg-gray-800/80 text-gray-300 border-gray-600/30'
+                                }`}>
+                                    {getEventStatus(event)}
+                                </span>
                             </div>
 
-                            {/* Card Body */}
-                            <div
-                                className="p-5 cursor-pointer"
-                                onClick={() => handleSelectEvent(event)}
-                            >
-                                {/* Date and Venue */}
-                                <div className="space-y-2 mb-4">
-                                    <p className="text-sm text-gray-600 flex items-center gap-2">
-                                        <FaCalendarAlt className="w-4 h-4 text-maroon/60" />
-                                        {new Date(event.date).toLocaleDateString('en-US', {
-                                            weekday: 'short',
-                                            month: 'short',
-                                            day: 'numeric',
-                                            year: 'numeric',
-                                        })}
-                                        {event.event_end && new Date(event.event_end).toDateString() !== new Date(event.date).toDateString() && (
-                                            <> - {new Date(event.event_end).toLocaleDateString('en-US', {
+                            {/* Background - Photo or Pattern */}
+                            <div className="absolute inset-0 bg-gray-900">
+                                {event.photo_url ? (
+                                    <img 
+                                        src={event.photo_url} 
+                                        alt={event.name}
+                                        className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
+                                    />
+                                ) : (
+                                    <div className="absolute inset-0 bg-gradient-to-br from-maroon via-maroon to-gray-900 opacity-90">
+                                        <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-1/4 -translate-y-1/4">
+                                            <FaCalendarAlt className="w-48 h-48 text-white rotate-12" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Overlay */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+
+                            {/* Action Buttons */}
+                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openEditModal(event);
+                                    }}
+                                    className="p-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full text-white/90 hover:text-white transition-all border border-white/10"
+                                    title="Edit Event"
+                                >
+                                    <FaEdit className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openDeleteModal(event);
+                                    }}
+                                    className="p-2.5 bg-white/10 hover:bg-red-500/80 backdrop-blur-md rounded-full text-white/90 hover:text-white transition-all border border-white/10"
+                                    title="Delete Event"
+                                >
+                                    <FaTrash className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 text-white">
+                                <h3 className="text-2xl font-bold mb-3 leading-tight text-white">{event.name}</h3>
+                                
+                                <div className="space-y-2 text-sm text-white/80">
+                                    {/* Date */}
+                                    <div className="flex items-center gap-2.5">
+                                        <FaCalendarAlt className="w-4 h-4 text-white/60" />
+                                        <span>
+                                            {new Date(event.date).toLocaleDateString('en-US', {
+                                                weekday: 'short',
                                                 month: 'short',
                                                 day: 'numeric',
                                                 year: 'numeric',
-                                            })}</>
-                                        )}
-                                    </p>
-                                    {event.event_start && (
-                                        <p className="text-sm text-gray-600 flex items-center gap-2">
-                                            <FaClock className="w-4 h-4 text-maroon/60" />
-                                            {new Date(event.event_start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                                            {event.event_end && (
-                                                <> - {new Date(event.event_end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</>
+                                            })}
+                                            {event.event_end && new Date(event.event_end).toDateString() !== new Date(event.date).toDateString() && (
+                                                <> - {new Date(event.event_end).toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    year: 'numeric',
+                                                })}</>
                                             )}
-                                        </p>
-                                    )}
-                                    {event.venue && (
-                                        <p className="text-sm text-gray-600 flex items-center gap-2">
-                                            <span className="w-4 text-center">📍</span>
-                                            {event.venue}
-                                        </p>
-                                    )}
-                                    {event.participant_type && (
-                                        <p className="text-sm text-gray-600 flex items-center gap-2">
-                                            <FaUsers className="w-4 h-4 text-maroon/60" />
-                                            <span className="capitalize">{event.participant_type}</span>
-                                        </p>
-                                    )}
-                                    {event.description && (
-                                        <p className="text-sm text-gray-500 line-clamp-2 mt-2">
-                                            {event.description}
-                                        </p>
-                                    )}
-                                </div>
+                                        </span>
+                                    </div>
 
-                                {/* Footer - View Link */}
-                                <div className="flex items-center justify-end pt-3 border-t border-gray-100">
-                                    <span className="text-maroon text-sm font-medium group-hover:translate-x-1 transition-transform">
-                                        View Details →
-                                    </span>
+                                    {/* Time */}
+                                    {event.event_start && (
+                                        <div className="flex items-center gap-2.5">
+                                            <FaClock className="w-4 h-4 text-white/60" />
+                                            <span>
+                                                {new Date(event.event_start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                                {event.event_end && (
+                                                    <> - {new Date(event.event_end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</>
+                                                )}
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {/* Venue */}
+                                    {event.venue && (
+                                        <div className="flex items-center gap-2.5">
+                                            <FaMapMarkerAlt className="w-4 h-4 text-white/60" />
+                                            <span className="truncate">{event.venue}</span>
+                                        </div>
+                                    )}
+
+                                    {/* Type */}
+                                    {event.participant_type && (
+                                        <div className="flex items-center gap-2.5">
+                                            <FaUsers className="w-4 h-4 text-white/60" />
+                                            <span className="capitalize">{event.participant_type}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </motion.div>
@@ -664,7 +832,7 @@ const EventsPage = () => {
                 title="Create New Event"
                 size="2xl"
             >
-                <div className="space-y-4">
+                <div className="space-y-3">
                     {/* Row 1: Event Name and Venue */}
                     <div className="grid grid-cols-1 md:grid-cols-10 gap-4">
                         <div className="md:col-span-6">
@@ -762,15 +930,41 @@ const EventsPage = () => {
                         </div>
                     </div>
 
-                    {/* Row 4: Description */}
+                    {/* Row 4: Event Photo */}
                     <div>
-                        <label className="form-label">Description</label>
-                        <textarea
-                            value={newEventDescription}
-                            onChange={(e) => setNewEventDescription(e.target.value)}
-                            placeholder="Add a brief description..."
-                            className="form-input min-h-[100px] resize-y"
-                        />
+                        <label className="form-label">Event Photo (Optional)</label>
+                        {eventImagePreview ? (
+                            <div className="flex justify-center py-2">
+                                <div className="relative">
+                                    <img
+                                        src={eventImagePreview}
+                                        alt="Event preview"
+                                        className="w-full max-w-sm h-32 object-cover rounded-xl border border-gray-200 shadow-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={removeImage}
+                                        className="absolute top-2 right-2 w-8 h-8 bg-red-500/90 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md backdrop-blur-sm"
+                                    >
+                                        <FaTimes className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-maroon/50 hover:bg-gray-50 transition-all group">
+                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                    <FaImage className="w-6 h-6 text-gray-400 group-hover:text-maroon/70" />
+                                </div>
+                                <span className="text-sm font-medium text-gray-600 group-hover:text-maroon">Click to upload event photo</span>
+                                <span className="text-xs text-gray-400 mt-1">JPG, PNG or WebP (Max 5MB)</span>
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    onChange={handleImageChange}
+                                    className="hidden"
+                                />
+                            </label>
+                        )}
                     </div>
                 </div>
                 <div className="flex gap-3 mt-6">
@@ -779,10 +973,10 @@ const EventsPage = () => {
                     </button>
                     <button
                         onClick={handleAddEvent}
-                        disabled={!newEventName || !newEventStartDate}
+                        disabled={!newEventName || !newEventStartDate || uploading}
                         className="btn-primary flex-1"
                     >
-                        Create Event
+                        {uploading ? 'Creating...' : 'Create Event'}
                     </button>
                 </div>
             </Modal>
@@ -794,7 +988,7 @@ const EventsPage = () => {
                 title="Edit Event"
                 size="2xl"
             >
-                <div className="space-y-4">
+                <div className="space-y-3">
                     {/* Row 1: Event Name and Venue */}
                     <div className="grid grid-cols-1 md:grid-cols-10 gap-4">
                         <div className="md:col-span-6">
@@ -892,15 +1086,41 @@ const EventsPage = () => {
                         </div>
                     </div>
 
-                    {/* Row 4: Description */}
+                    {/* Row 4: Event Photo */}
                     <div>
-                        <label className="form-label">Description (Optional)</label>
-                        <textarea
-                            value={newEventDescription}
-                            onChange={(e) => setNewEventDescription(e.target.value)}
-                            placeholder="Add a brief description of the event..."
-                            className="form-input min-h-[100px] resize-y"
-                        />
+                        <label className="form-label">Event Photo (Optional)</label>
+                        {eventImagePreview ? (
+                            <div className="flex justify-center py-2">
+                                <div className="relative">
+                                    <img
+                                        src={eventImagePreview}
+                                        alt="Event preview"
+                                        className="w-full max-w-sm h-32 object-cover rounded-xl border border-gray-200 shadow-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={removeImage}
+                                        className="absolute top-2 right-2 w-8 h-8 bg-red-500/90 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md backdrop-blur-sm"
+                                    >
+                                        <FaTimes className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-maroon/50 hover:bg-gray-50 transition-all group">
+                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                    <FaImage className="w-6 h-6 text-gray-400 group-hover:text-maroon/70" />
+                                </div>
+                                <span className="text-sm font-medium text-gray-600 group-hover:text-maroon">Click to upload event photo</span>
+                                <span className="text-xs text-gray-400 mt-1">JPG, PNG or WebP (Max 5MB)</span>
+                                <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    onChange={handleImageChange}
+                                    className="hidden"
+                                />
+                            </label>
+                        )}
                     </div>
                 </div>
                 <div className="flex gap-3 mt-6">
@@ -3557,7 +3777,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
                     <div className="flex gap-1.5">
                         <button
                             onClick={() => setSelectedGender('male')}
-                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${selectedGender === 'male'
+                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm flex-1 ${selectedGender === 'male'
                                 ? 'bg-white text-blue-600 shadow-md ring-1 ring-black/5'
                                 : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
                                 }`}
@@ -3567,7 +3787,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
                         </button>
                         <button
                             onClick={() => setSelectedGender('female')}
-                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${selectedGender === 'female'
+                            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm flex-1 ${selectedGender === 'female'
                                 ? 'bg-white text-pink-600 shadow-md ring-1 ring-black/5'
                                 : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
                                 }`}
@@ -3583,7 +3803,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
             <AnimatePresence mode="wait">
                 {activeScoreTab === 'judge-scores' && (
                     <motion.div
-                        key="judge-scores"
+                        key={`judge-scores-${selectedGender}`}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
@@ -3595,7 +3815,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                 <h3 className="text-lg font-semibold text-white">1. Judge Rankings by Criteria</h3>
                                 <p className="text-white/70 text-sm mt-1">View rankings per criteria with total score and overall rank</p>
                             </div>
-                            <div className="p-6">
+                            <div className="p-6 pb-0">
                                 {/* Filters */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                                     <div>
@@ -3625,8 +3845,10 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                         </select>
                                     </div>
                                 </div>
+                            </div>
 
-                                {/* Table */}
+                            {/* Table */}
+                            <div>
                                 {table1Data ? (
                                     <div className="overflow-x-auto">
                                         {table1Data.isRankingBased ? (
@@ -3771,7 +3993,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="text-center py-8 text-gray-500">
+                                    <div className="text-center py-8 p-6 text-gray-500">
                                         Select a judge and category to view scores
                                     </div>
                                 )}
@@ -3783,7 +4005,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
                 {
                     activeScoreTab === 'average-scores' && (
                         <motion.div
-                            key="average-scores"
+                            key={`average-scores-${selectedGender}`}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -20 }}
@@ -3798,7 +4020,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                     </h3>
                                     <p className="text-white/70 text-sm mt-1">View rankings from each judge and the average</p>
                                 </div>
-                                <div className="p-6">
+                                <div className="p-6 pb-0">
                                     {/* Filter */}
                                     <div className="mb-6">
                                         <label className="form-label">Select Category</label>
@@ -3813,91 +4035,91 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                             ))}
                                         </select>
                                     </div>
+                                </div>
 
-                                    {/* Table */}
-                                    {table2Data ? (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full border-collapse">
-                                                <thead>
-                                                    <tr className="bg-gray-50">
-                                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
-                                                            Participant
+                                {/* Table */}
+                                {table2Data ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-50">
+                                                    <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                        Participant
+                                                    </th>
+                                                    {table2Data.judges.map((judge) => (
+                                                        <th key={judge.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                            {judge.name}
                                                         </th>
-                                                        {table2Data.judges.map((judge) => (
-                                                            <th key={judge.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
-                                                                {judge.name}
-                                                            </th>
-                                                        ))}
-                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
-                                                            Sum
-                                                        </th>
-                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-purple-50">
-                                                            <div>Results</div>
-                                                            <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
-                                                        </th>
-                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
-                                                            Final Rank
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {table2Data.participants.map((item, index) => (
-                                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                            <td className="border border-gray-200 px-4 py-3">
-                                                                <div className="flex items-center gap-3">
-                                                                    {item.participant.photo_url ? (
-                                                                        <img
-                                                                            src={item.participant.photo_url}
-                                                                            alt={item.participant.name}
-                                                                            className="w-8 h-8 rounded-full object-cover"
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
-                                                                            {item.participant.name.charAt(0)}
-                                                                        </div>
-                                                                    )}
-                                                                    <div>
-                                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
-                                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
+                                                    ))}
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
+                                                        Sum
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-purple-50">
+                                                        <div>Results</div>
+                                                        <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                        Final Rank
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {table2Data.participants.map((item, index) => (
+                                                    <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                        <td className="border border-gray-200 px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                {item.participant.photo_url ? (
+                                                                    <img
+                                                                        src={item.participant.photo_url}
+                                                                        alt={item.participant.name}
+                                                                        className="w-8 h-8 rounded-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                                                                        {item.participant.name.charAt(0)}
                                                                     </div>
+                                                                )}
+                                                                <div>
+                                                                    <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                    <p className="text-sm text-gray-500">{item.participant.department}</p>
                                                                 </div>
-                                                            </td>
-                                                            {table2Data.judges.map((judge) => (
-                                                                <td key={judge.id} className="border border-gray-200 px-4 py-3 text-center">
-                                                                    {item.judgeRanks[judge.id]?.rank !== null ? (
-                                                                        <span className="font-medium">{item.judgeRanks[judge.id].rank}</span>
-                                                                    ) : '—'}
-                                                                </td>
-                                                            ))}
-                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
-                                                                {item.judgeCount > 0 ? item.sumRanks : '—'}
-                                                            </td>
-                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-purple-700 bg-purple-50">
-                                                                {item.results !== null ? item.results.toFixed(2) : '—'}
-                                                            </td>
-                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
-                                                                {item.finalRank !== null ? (
-                                                                    <span className={
-                                                                        item.finalRank === 1 ? 'text-yellow-600' :
-                                                                            item.finalRank === 2 ? 'text-gray-500' :
-                                                                                item.finalRank === 3 ? 'text-amber-600' :
-                                                                                    'text-gray-600'
-                                                                    }>
-                                                                        {getOrdinal(item.finalRank)}
-                                                                    </span>
+                                                            </div>
+                                                        </td>
+                                                        {table2Data.judges.map((judge) => (
+                                                            <td key={judge.id} className="border border-gray-200 px-4 py-3 text-center">
+                                                                {item.judgeRanks[judge.id]?.rank !== null ? (
+                                                                    <span className="font-medium">{item.judgeRanks[judge.id].rank}</span>
                                                                 ) : '—'}
                                                             </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center py-8 text-gray-500">
-                                            Select a category to view judge scores
-                                        </div>
-                                    )}
-                                </div>
+                                                        ))}
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
+                                                            {item.judgeCount > 0 ? item.sumRanks : '—'}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-purple-700 bg-purple-50">
+                                                            {item.results !== null ? item.results.toFixed(2) : '—'}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                            {item.finalRank !== null ? (
+                                                                <span className={
+                                                                    item.finalRank === 1 ? 'text-yellow-600' :
+                                                                        item.finalRank === 2 ? 'text-gray-500' :
+                                                                            item.finalRank === 3 ? 'text-amber-600' :
+                                                                                'text-gray-600'
+                                                                }>
+                                                                    {getOrdinal(item.finalRank)}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 p-6 text-gray-500">
+                                        Select a category to view judge scores
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     )
@@ -3906,7 +4128,7 @@ const ScoresTab = ({ event }: { event: Event }) => {
                 {
                     activeScoreTab === 'final-results' && (
                         <motion.div
-                            key="final-results"
+                            key={`final-results-${selectedGender}`}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -20 }}
@@ -3920,96 +4142,95 @@ const ScoresTab = ({ event }: { event: Event }) => {
                                         Overall ranking based on average of all category ranks (Sum of Ranks ÷ Number of Categories)
                                     </p>
                                 </div>
-                                <div className="p-6">
-                                    {categories.length > 0 && table3Data ? (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full border-collapse">
-                                                <thead>
-                                                    <tr className="bg-gray-50">
-                                                        <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
-                                                            Participant
+                                
+                                {categories.length > 0 && table3Data ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-50">
+                                                    <th className="border border-gray-200 px-4 py-3 text-left font-semibold text-gray-900">
+                                                        Participant
+                                                    </th>
+                                                    {categories.map((category) => (
+                                                        <th key={category.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
+                                                            {category.name}
                                                         </th>
-                                                        {categories.map((category) => (
-                                                            <th key={category.id} className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900">
-                                                                {category.name}
-                                                            </th>
-                                                        ))}
-                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
-                                                            Sum
-                                                        </th>
-                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-green-50">
-                                                            <div>Results</div>
-                                                            <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
-                                                        </th>
-                                                        <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
-                                                            Final Rank
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {table3Data.map((item, index) => (
-                                                        <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                            <td className="border border-gray-200 px-4 py-3">
-                                                                <div className="flex items-center gap-3">
-                                                                    {item.participant.photo_url ? (
-                                                                        <img
-                                                                            src={item.participant.photo_url}
-                                                                            alt={item.participant.name}
-                                                                            className="w-8 h-8 rounded-full object-cover"
-                                                                        />
-                                                                    ) : (
-                                                                        <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white text-sm font-bold">
-                                                                            {item.participant.name.charAt(0)}
-                                                                        </div>
-                                                                    )}
-                                                                    <div>
-                                                                        <p className="font-medium text-gray-900">{item.participant.name}</p>
-                                                                        <p className="text-sm text-gray-500">{item.participant.department}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            {categories.map((category) => (
-                                                                <td key={category.id} className="border border-gray-200 px-4 py-3 text-center">
-                                                                    {item.categoryRanks[category.id] !== null ? (
-                                                                        <span className="font-medium">{item.categoryRanks[category.id]}</span>
-                                                                    ) : '—'}
-                                                                </td>
-                                                            ))}
-                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
-                                                                {item.categoryCount > 0 ? (
-                                                                    <span title={`${item.sumRanks} ÷ ${item.categoryCount}`}>{item.sumRanks}</span>
-                                                                ) : '—'}
-                                                            </td>
-                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold text-green-700 bg-green-50">
-                                                                {item.avgRank !== null ? (
-                                                                    <span title={`${item.sumRanks} ÷ ${item.categoryCount} = ${item.avgRank.toFixed(2)}`}>
-                                                                        {item.avgRank.toFixed(2)}
-                                                                    </span>
-                                                                ) : '—'}
-                                                            </td>
-                                                            <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
-                                                                {item.finalRank !== null ? (
-                                                                    <span className={
-                                                                        item.finalRank === 1 ? 'text-yellow-600' :
-                                                                            item.finalRank === 2 ? 'text-gray-500' :
-                                                                                item.finalRank === 3 ? 'text-amber-600' :
-                                                                                    'text-gray-600'
-                                                                    }>
-                                                                        {getOrdinal(item.finalRank)}
-                                                                    </span>
-                                                                ) : '—'}
-                                                            </td>
-                                                        </tr>
                                                     ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center py-8 text-gray-500">
-                                            {categories.length === 0 ? 'No categories found for this event' : 'No scores available yet'}
-                                        </div>
-                                    )}
-                                </div>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-blue-50">
+                                                        Sum
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-green-50">
+                                                        <div>Results</div>
+                                                        <div className="text-xs font-normal text-gray-500">(Sum ÷ Count)</div>
+                                                    </th>
+                                                    <th className="border border-gray-200 px-4 py-3 text-center font-semibold text-gray-900 bg-yellow-50">
+                                                        Final Rank
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {table3Data.map((item, index) => (
+                                                    <tr key={item.participant.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                        <td className="border border-gray-200 px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                {item.participant.photo_url ? (
+                                                                    <img
+                                                                        src={item.participant.photo_url}
+                                                                        alt={item.participant.name}
+                                                                        className="w-8 h-8 rounded-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white text-sm font-bold">
+                                                                        {item.participant.name.charAt(0)}
+                                                                    </div>
+                                                                )}
+                                                                <div>
+                                                                    <p className="font-medium text-gray-900">{item.participant.name}</p>
+                                                                    <p className="text-sm text-gray-500">{item.participant.department}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        {categories.map((category) => (
+                                                            <td key={category.id} className="border border-gray-200 px-4 py-3 text-center">
+                                                                {item.categoryRanks[category.id] !== null ? (
+                                                                    <span className="font-medium">{item.categoryRanks[category.id]}</span>
+                                                                ) : '—'}
+                                                            </td>
+                                                        ))}
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-blue-700 bg-blue-50">
+                                                            {item.categoryCount > 0 ? (
+                                                                <span title={`${item.sumRanks} ÷ ${item.categoryCount}`}>{item.sumRanks}</span>
+                                                            ) : '—'}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold text-green-700 bg-green-50">
+                                                            {item.avgRank !== null ? (
+                                                                <span title={`${item.sumRanks} ÷ ${item.categoryCount} = ${item.avgRank.toFixed(2)}`}>
+                                                                    {item.avgRank.toFixed(2)}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                        <td className="border border-gray-200 px-4 py-3 text-center font-bold bg-yellow-50">
+                                                            {item.finalRank !== null ? (
+                                                                <span className={
+                                                                    item.finalRank === 1 ? 'text-yellow-600' :
+                                                                        item.finalRank === 2 ? 'text-gray-500' :
+                                                                            item.finalRank === 3 ? 'text-amber-600' :
+                                                                                'text-gray-600'
+                                                                }>
+                                                                    {getOrdinal(item.finalRank)}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 p-6 text-gray-500">
+                                        {categories.length === 0 ? 'No categories found for this event' : 'No scores available yet'}
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     )
@@ -4080,11 +4301,12 @@ const SettingsTab = ({ event, onEdit, onDelete, onEventUpdate }: { event: Event;
                     </div>
                     <div className="flex justify-between py-3 border-b border-gray-100">
                         <span className="text-gray-500">Status</span>
-                        <span className={`badge ${event.status === 'ongoing' ? 'badge-success' :
-                            event.status === 'completed' ? 'badge-info' :
-                                'badge-warning'
-                            }`}>
-                            {event.status || 'draft'}
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
+                            getEventStatus(event) === 'Upcoming' ? 'bg-white text-maroon border-maroon' :
+                            getEventStatus(event) === 'Ongoing' ? 'bg-maroon text-white border-maroon animate-pulse' :
+                            'bg-gray-100 text-gray-600 border-gray-200'
+                        }`}>
+                            {getEventStatus(event)}
                         </span>
                     </div>
                 </div>

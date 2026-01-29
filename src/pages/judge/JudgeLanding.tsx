@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FaArrowRight, FaCalendarAlt, FaTrophy, FaTable } from 'react-icons/fa';
+import { FaArrowRight, FaCalendarAlt, FaTrophy, FaTable, FaCheckCircle } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Judge, Category, Event } from '../../types';
 
 interface CategoryWithEvent extends Category {
     events: Event;
+    is_completed?: boolean;
 }
 
 interface JudgeContext {
@@ -59,7 +60,6 @@ const JudgeLanding = () => {
                         id,
                         name,
                         tabular_type,
-
                         event_id,
                         events (
                             id,
@@ -72,11 +72,23 @@ const JudgeLanding = () => {
                 .eq('is_active', true);
 
             if (!error && data) {
+                // Fetch locked scores to determine completion status
+                const { data: lockedData } = await supabase
+                    .from('scores')
+                    .select('criteria!inner(category_id)')
+                    .eq('judge_id', judge.id)
+                    .not('submitted_at', 'is', null);
+                
+                const completedCategoryIds = new Set(
+                    lockedData?.map((item: any) => item.criteria?.category_id) || []
+                );
+
                 const cats = data
                     .filter((item: any) => item.categories)
                     .map((item: any) => ({
                         ...item.categories,
                         events: item.categories.events,
+                        is_completed: completedCategoryIds.has(item.categories.id)
                     })) as CategoryWithEvent[];
                 setCategories(cats);
             }
@@ -98,9 +110,7 @@ const JudgeLanding = () => {
         // Mark that welcome has been seen so back navigation skips it
         sessionStorage.setItem('judgeWelcomeSeen', 'true');
         setShowWelcome(false);
-        setTimeout(() => {
-            navigate(`/judge/tabular/${categoryId}`);
-        }, 300);
+        navigate(`/judge/tabular/${categoryId}`);
     };
 
 
@@ -129,136 +139,122 @@ const JudgeLanding = () => {
     // Welcome Screen
     if (showWelcome) {
         return (
-            <motion.div
-                key="welcome"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.5 }}
-                className={`min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 ${isDarkMode ? '' : 'bg-gradient-to-br from-gray-50 to-gray-100'}`}
-            >
-                <div className="text-center max-w-2xl">
-                    {/* LDCU Logo */}
-                    <motion.div
-                        initial={{ scale: 0, rotate: -180 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        transition={{ type: 'spring', delay: 0.2, stiffness: 150 }}
-                        className="mb-8"
-                    >
-                        <img
-                            src="/ldcu-logo.png"
-                            alt="LDCU Logo"
-                            className="w-28 h-28 mx-auto object-contain"
-                        />
-                    </motion.div>
+            <div className={`min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 md:p-12 ${isDarkMode ? '' : 'bg-gradient-to-br from-gray-50 to-gray-100'}`}>
+                <motion.div
+                    key="welcome-content"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="w-full max-w-7xl mx-auto"
+                >
+                    {/* Background Logo Watermark - Adjusted for new layout */}
+                    <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] opacity-[0.03] pointer-events-none z-0">
+                        <img src="/ldcu-logo.png" alt="" className="w-full h-full object-contain" />
+                    </div>
 
-                    {/* Greeting */}
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4 }}
-                        className={isDarkMode ? 'text-white/60 text-xl mb-2' : 'text-gray-600 text-xl mb-2'}
-                    >
-                        {getGreeting()},
-                    </motion.p>
-
-                    {/* Judge Title and Name with Wave */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
-                        className="mb-4"
-                    >
-                        <div className="flex items-center justify-center gap-4 mb-2">
-                            <h1 className={`text-4xl md:text-5xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
-                                {judge?.name}
-                            </h1>
-                            <motion.span
-                                animate={{ rotate: [0, 14, -8, 14, -4, 10, 0] }}
-                                transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 1 }}
-                                className="text-4xl"
+                    <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-12 lg:gap-24">
+                        
+                        {/* LEFT COLUMN: Text & Actions */}
+                        <div className="flex-1 text-center lg:text-left order-2 lg:order-1 max-w-2xl">
+                            <motion.div
+                                initial={{ x: -20, opacity: 0 }}
+                                animate={{ x: 0, opacity: 1 }}
+                                transition={{ delay: 0.2 }}
                             >
-                                👋
-                            </motion.span>
-                        </div>
-                    </motion.div>
+                                <h1 className={`text-5xl lg:text-7xl font-bold mb-4 leading-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    Hello, <br />
+                                    <span className="text-maroon dark:text-gold">{judge?.name}</span>
+                                </h1>
+                                
+                                <p className={`text-xl lg:text-2xl font-light mb-10 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                    {getGreeting()}
+                                </p>
 
-                    {/* Welcome message */}
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.6 }}
-                        className={isDarkMode ? 'text-white/50 text-lg mb-8' : 'text-gray-600 text-lg mb-8'}
-                    >
-                        Welcome to the LDCU Tabulation System
-                    </motion.p>
-
-                    {/* Category info or message */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.8 }}
-                        className={isDarkMode ? 'bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/10 mb-8' : 'bg-white rounded-2xl p-6 border border-gray-200 shadow-lg mb-8'}
-                    >
-                        {categories.length > 0 ? (
-                            <>
-                                <p className={isDarkMode ? 'text-white/60 text-sm mb-2' : 'text-gray-600 text-sm mb-2'}>You will be judging</p>
-                                <h2 className={`text-2xl font-bold mb-2 ${isDarkMode ? 'text-gold' : 'text-maroon'}`}>
-                                    {categories[0].name}
-                                </h2>
-                                <div className="flex items-center justify-center gap-2">
-                                    <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium ${isDarkMode ? 'bg-maroon/90 text-white border border-maroon' : 'bg-maroon text-white border border-maroon-dark'}`}>
-                                        {categories[0].tabular_type === 'ranking' ? (
-                                            <>
-                                                <FaTrophy className="w-3.5 h-3.5 text-gold" />
-                                                Ranking
-                                            </>
-                                        ) : (
-                                            <>
-                                                <FaTable className="w-3.5 h-3.5 text-gold" />
-                                                Scoring
-                                            </>
-                                        )}
-                                    </span>
+                                {/* Assignment Status - Formal Design */}
+                                <div className="mb-8 w-full max-w-lg mx-auto lg:mx-0">
+                                    {categories.length > 0 ? (
+                                        <div className={`rounded-2xl p-6 ${isDarkMode ? 'bg-white/5 border border-white/10' : 'bg-white border border-gray-200 shadow-sm'}`}>
+                                            <div className="grid grid-cols-1 gap-4">
+                                                <div>
+                                                    <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${isDarkMode ? 'text-white/40' : 'text-gray-400'}`}>
+                                                        Event
+                                                    </p>
+                                                    <p className={`font-bold text-xl truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {categories[0].events?.name || 'Unknown Event'}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className={`font-bold text-xl truncate ${isDarkMode ? 'text-gold' : 'text-maroon'}`}>
+                                                        {categories.length === 1 ? categories[0].name : `${categories.length} Criteria`}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className={`rounded-2xl p-6 text-center ${isDarkMode ? 'bg-white/5 border border-white/10' : 'bg-gray-50 border border-gray-200'}`}>
+                                            <p className={isDarkMode ? 'text-white/50' : 'text-gray-500'}>
+                                                Waiting for category assignment...
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
-                            </>
-                        ) : (
-                            <>
-                                <p className={isDarkMode ? 'text-white/60 text-sm mb-2' : 'text-gray-600 text-sm mb-2'}>Status</p>
-                                <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white/80' : 'text-gray-700'}`}>
-                                    Waiting for category assignment...
-                                </h2>
-                            </>
-                        )}
-                    </motion.div>
 
-                    {/* Countdown */}
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 1 }}
-                        className="flex flex-col items-center gap-4"
-                    >
-                        <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isDarkMode ? 'bg-white/10 border-2 border-gold' : 'bg-gradient-to-br from-gold-light to-gold border-2 border-gold-dark shadow-gold'}`}>
-                            <span className={`text-3xl font-bold ${isDarkMode ? 'text-gold' : 'text-maroon'}`}>{countdown}</span>
+                                {/* Primary Action */}
+                                {categories.length > 0 && (
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => categories.length === 1 ? handleProceed(categories[0].id) : setShowWelcome(false)}
+                                        className="w-full max-w-lg px-8 py-4 bg-maroon text-white text-lg font-bold rounded-xl shadow-lg shadow-maroon/20 hover:bg-maroon-dark hover:shadow-maroon/40 transition-all flex items-center justify-between mx-auto lg:mx-0 group"
+                                    >
+                                        <span>{categories.length === 1 ? 'Proceed to Judging' : 'View Assignments'}</span>
+                                        <div className="bg-white/20 p-2 rounded-lg group-hover:bg-white/30 transition-colors">
+                                            <FaArrowRight className="w-4 h-4" />
+                                        </div>
+                                    </motion.button>
+                                )}
+                            </motion.div>
                         </div>
-                        <p className={isDarkMode ? 'text-white/40 text-sm' : 'text-gray-500 text-sm'}>
-                            {categories.length > 0 ? `Starting in ${countdown}...` : 'Loading...'}
-                        </p>
 
-                        {/* Manual proceed button */}
-                        {categories.length > 0 && (
-                            <button
-                                onClick={() => handleProceed(categories[0].id)}
-                                className="mt-4 flex items-center gap-2 px-6 py-3 bg-maroon text-white font-medium rounded-xl hover:bg-maroon-dark transition-colors shadow-lg shadow-maroon/25"
+                        {/* RIGHT COLUMN: Maximized Profile Image */}
+                        <div className="order-1 lg:order-2">
+                            <motion.div
+                                initial={{ scale: 0.8, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ delay: 0.3, type: 'spring', stiffness: 100 }}
+                                className="relative"
                             >
-                                Start Now
-                                <FaArrowRight className="w-4 h-4" />
-                            </button>
-                        )}
-                    </motion.div>
-                </div>
-            </motion.div>
+                                {/* Decorative Rings */}
+                                <div className={`absolute inset-0 rounded-full border-2 border-dashed animate-[spin_10s_linear_infinite] ${isDarkMode ? 'border-white' : 'border-maroon'}`} />
+                                <div className={`absolute -inset-4 rounded-full border border-solid ${isDarkMode ? 'border-white' : 'border-maroon'}`} />
+                                
+                                {/* Main Image Container */}
+                                <div className={`w-64 h-64 lg:w-96 lg:h-96 rounded-full p-2 ${isDarkMode ? 'bg-white/5 backdrop-blur-sm border-2 border-white' : 'bg-white shadow-2xl border-2 border-maroon'}`}>
+                                    <div className="w-full h-full rounded-full overflow-hidden relative">
+                                        {judge?.photo_url ? (
+                                            <img
+                                                src={judge.photo_url}
+                                                alt={judge.name}
+                                                className="w-full h-full object-cover transform hover:scale-110 transition-transform duration-700"
+                                            />
+                                        ) : (
+                                            <div className={`w-full h-full flex items-center justify-center ${isDarkMode ? 'bg-gradient-to-br from-white/10 to-white/5' : 'bg-gradient-to-br from-gray-50 to-white'}`}>
+                                                <span className={`text-7xl font-bold ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
+                                                    {judge?.name.charAt(0).toUpperCase()}
+                                                </span>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Glass Overlay Effect */}
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-maroon/10 to-transparent pointer-events-none" />
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    </div>
+                </motion.div>
+            </div>
         );
     }
 
@@ -306,6 +302,12 @@ const JudgeLanding = () => {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
+                                    {category.is_completed && (
+                                        <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold ${isDarkMode ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-green-100 text-green-700 border border-green-200'}`}>
+                                            <FaCheckCircle className="w-3.5 h-3.5" />
+                                            Submitted
+                                        </span>
+                                    )}
                                     <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium ${isDarkMode ? 'bg-maroon/90 text-white border border-maroon' : 'bg-maroon text-white border border-maroon-dark'}`}>
                                         {category.tabular_type === 'ranking' ? (
                                             <>

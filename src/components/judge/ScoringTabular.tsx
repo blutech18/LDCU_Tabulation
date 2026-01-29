@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { motion } from 'framer-motion';
-import { FaLock, FaUnlock, FaCheck, FaMars, FaVenus } from 'react-icons/fa';
+import { FaUnlock, FaCheck, FaMars, FaVenus } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import type { Participant, Criteria } from '../../types';
 
@@ -11,10 +11,12 @@ interface ScoringTabularProps {
     isDarkMode: boolean;
     eventParticipantType?: 'individual' | 'group';
     onSaveStateChange?: (isSaving: boolean) => void;
+    onLockChange?: (isLocked: boolean) => void;
 }
 
 export interface ScoringTabularRef {
     refresh: () => Promise<void>;
+    unlock: () => Promise<void>;
 }
 
 interface ScoreState {
@@ -24,7 +26,7 @@ interface ScoreState {
     };
 }
 
-const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType, onSaveStateChange }, ref) => {
+const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType, onSaveStateChange, onLockChange }, ref) => {
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [scores, setScores] = useState<ScoreState>({});
@@ -33,7 +35,96 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
     const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
     const saveTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
+    // Floating button visibility state
+    const [isBottomVisible, setIsBottomVisible] = useState(false);
+    const observerRef = useRef<IntersectionObserver | null>(null);
+
     const isIndividual = eventParticipantType === 'individual';
+
+    // Callback ref to handle IntersectionObserver setup
+    const setupIntersectionObserver = useCallback((element: HTMLDivElement | null) => {
+        // Clean up existing observer
+        if (observerRef.current) {
+            observerRef.current.disconnect();
+            observerRef.current = null;
+        }
+
+        if (element) {
+            const observer = new IntersectionObserver(
+                ([entry]) => {
+                    setIsBottomVisible(entry.isIntersecting);
+                },
+                {
+                    root: null,
+                    threshold: 0.1,
+                }
+            );
+
+            observer.observe(element);
+            observerRef.current = observer;
+        }
+    }, []);
+
+    const calculateTotal = (participantId: number) => {
+        if (!scores[participantId]) return 0;
+        return criteria.reduce((sum, c) => sum + (scores[participantId][c.id] ?? 0), 0);
+    };
+
+    // Filter participants by gender for individual events
+    const baseFilteredParticipants = isIndividual
+        ? participants.filter(p => p.gender === selectedGender)
+        : participants;
+
+    const isAllLocked = baseFilteredParticipants.length > 0 && baseFilteredParticipants.every(p => scores[p.id]?.locked);
+
+    const filteredParticipants = [...baseFilteredParticipants].sort((a, b) => {
+        if (isAllLocked) {
+            const scoreA = calculateTotal(a.id);
+            const scoreB = calculateTotal(b.id);
+            if (scoreB !== scoreA) {
+                return scoreB - scoreA;
+            }
+        }
+        return 0;
+    });
+
+    // Notify parent of lock state changes
+    useEffect(() => {
+        const isLocked = participants.length > 0 && participants.every(p => scores[p.id]?.locked);
+        if (onLockChange) {
+            onLockChange(isLocked);
+        }
+    }, [scores, participants, onLockChange]);
+
+    const unlock = useCallback(async () => {
+        setSaving(true);
+        try {
+            // Unlock all participants
+            const criteriaIds = criteria.map(c => c.id);
+            const participantIds = filteredParticipants.map(p => p.id);
+            
+            await supabase
+                .from('scores')
+                .update({ submitted_at: null })
+                .eq('judge_id', judgeId)
+                .in('participant_id', participantIds)
+                .in('criteria_id', criteriaIds);
+
+            setScores((prev) => {
+                const newScores = { ...prev };
+                participantIds.forEach(pId => {
+                    if (newScores[pId]) {
+                        newScores[pId] = { ...newScores[pId], locked: false };
+                    }
+                });
+                return newScores;
+            });
+        } catch (error) {
+            console.error('Error unlocking:', error);
+        } finally {
+            setSaving(false);
+        }
+    }, [criteria, filteredParticipants, judgeId]);
 
     const fetchData = useCallback(async () => {
         // First, get the category to find its event_id
@@ -133,8 +224,9 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
 
     // Expose refresh function via ref
     useImperativeHandle(ref, () => ({
-        refresh: fetchData
-    }), [fetchData]);
+        refresh: fetchData,
+        unlock
+    }), [fetchData, unlock]);
 
     // Notify parent of save state changes
     useEffect(() => {
@@ -167,60 +259,6 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
         }
     }, [judgeId, scores]);
 
-    const handleLockParticipant = async (participantId: number) => {
-        setSaving(true);
-
-        // Save all scores for this participant
-        const participantScores = scores[participantId];
-        const inserts = criteria.map(c => ({
-            judge_id: judgeId,
-            participant_id: participantId,
-            criteria_id: c.id,
-            score: participantScores[c.id] || 0,
-            submitted_at: new Date().toISOString()
-        }));
-
-        const { error } = await supabase
-            .from('scores')
-            .upsert(inserts, { onConflict: 'judge_id,participant_id,criteria_id' });
-
-        if (!error) {
-            setScores((prev) => ({
-                ...prev,
-                [participantId]: {
-                    ...prev[participantId],
-                    locked: true,
-                },
-            }));
-        }
-
-        setSaving(false);
-    };
-
-    const handleUnlockParticipant = async (participantId: number) => {
-        const criteriaIds = criteria.map(c => c.id);
-        
-        await supabase
-            .from('scores')
-            .update({ submitted_at: null })
-            .eq('judge_id', judgeId)
-            .eq('participant_id', participantId)
-            .in('criteria_id', criteriaIds);
-
-        setScores((prev) => ({
-            ...prev,
-            [participantId]: {
-                ...prev[participantId],
-                locked: false,
-            },
-        }));
-    };
-
-    const calculateTotal = (participantId: number) => {
-        if (!scores[participantId]) return 0;
-        return criteria.reduce((sum, c) => sum + (scores[participantId][c.id] ?? 0), 0);
-    };
-
     // Convert rank to ordinal format (1st, 2nd, 3rd, etc.)
     const getOrdinal = (rank: number) => {
         const suffixes = ['th', 'st', 'nd', 'rd'];
@@ -234,11 +272,6 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
             Object.values(saveTimeoutRef.current).forEach(timeout => clearTimeout(timeout));
         };
     }, []);
-
-    // Filter participants by gender for individual events
-    const filteredParticipants = isIndividual
-        ? participants.filter(p => p.gender === selectedGender)
-        : participants;
 
     // Calculate rankings based on total scores
     const getRankings = () => {
@@ -278,6 +311,67 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
         if (!scores[p.id]) return false;
         return criteria.some(c => scores[p.id][c.id] !== undefined && scores[p.id][c.id] !== 0);
     });
+
+    const handleToggleLock = async () => {
+        const isLocked = filteredParticipants.every(p => scores[p.id]?.locked);
+        
+        setSaving(true);
+        
+        if (isLocked) {
+            // Unlock all participants
+            const criteriaIds = criteria.map(c => c.id);
+            const participantIds = filteredParticipants.map(p => p.id);
+            
+            await supabase
+                .from('scores')
+                .update({ submitted_at: null })
+                .eq('judge_id', judgeId)
+                .in('participant_id', participantIds)
+                .in('criteria_id', criteriaIds);
+
+            setScores((prev) => {
+                const newScores = { ...prev };
+                participantIds.forEach(pId => {
+                    if (newScores[pId]) {
+                        newScores[pId] = { ...newScores[pId], locked: false };
+                    }
+                });
+                return newScores;
+            });
+        } else {
+            // Lock all participants
+            const lockPromises = filteredParticipants.map(async (participant) => {
+                if (!scores[participant.id]?.locked) {
+                    const participantScores = scores[participant.id];
+                    const inserts = criteria.map(c => ({
+                        judge_id: judgeId,
+                        participant_id: participant.id,
+                        criteria_id: c.id,
+                        score: participantScores?.[c.id] ?? 0,
+                        submitted_at: new Date().toISOString()
+                    }));
+                    await supabase
+                        .from('scores')
+                        .upsert(inserts, { onConflict: 'judge_id,participant_id,criteria_id' });
+                }
+            });
+            await Promise.all(lockPromises);
+            
+            // Update local state to locked
+            setScores((prev) => {
+                const newScores = { ...prev };
+                filteredParticipants.forEach(p => {
+                    if (newScores[p.id]) {
+                        newScores[p.id] = { ...newScores[p.id], locked: true };
+                    }
+                });
+                return newScores;
+            });
+            
+            onFinish();
+        }
+        setSaving(false);
+    };
 
     if (loading) {
         return (
@@ -346,9 +440,6 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                                 ))}
                                 <th className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                                     Rank
-                                </th>
-                                <th className={`px-4 py-4 text-center text-sm font-semibold align-middle ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                    Action
                                 </th>
                             </tr>
                         </thead>
@@ -530,26 +621,6 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                                             </span>
                                         )}
                                     </td>
-                                    <td className="px-4 py-4 text-center align-middle">
-                                        {scores[participant.id]?.locked ? (
-                                            <button
-                                                onClick={() => handleUnlockParticipant(participant.id)}
-                                                className={`p-2 rounded-lg transition-colors shadow-sm ${isDarkMode ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
-                                                title="Unlock to edit"
-                                            >
-                                                <FaLock className="w-4 h-4" />
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() => handleLockParticipant(participant.id)}
-                                                disabled={saving}
-                                                className={`p-2 rounded-lg transition-colors disabled:opacity-50 shadow-sm ${isDarkMode ? 'bg-primary-500/20 text-primary-300 hover:bg-primary-500/30' : 'bg-maroon/10 text-maroon hover:bg-maroon/20'}`}
-                                                title="Lock and save"
-                                            >
-                                                <FaUnlock className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                    </td>
                                 </motion.tr>
                             ))}
                         </tbody>
@@ -558,10 +629,10 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
             </div>
 
             {/* Auto-save indicator and Complete button */}
-            <div className="flex items-center justify-between pb-4 sm:pb-6 md:pb-8 lg:pb-10">
-                <div className={`text-sm ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
+            <div ref={setupIntersectionObserver} className="flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-0 pb-4 sm:pb-6 md:pb-8 lg:pb-10">
+                <div className={`text-sm w-full sm:w-auto text-center sm:text-left ${isDarkMode ? 'text-white/50' : 'text-gray-500'}`}>
                     {saving ? (
-                        <span className="flex items-center gap-2">
+                        <span className="flex items-center justify-center sm:justify-start gap-2">
                             <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
                             Saving...
                         </span>
@@ -570,35 +641,77 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                     )}
                 </div>
                 {hasAnyScoresEntered && (
-                    <button
-                        onClick={async () => {
-                            // Lock all participants before finishing
-                            setSaving(true);
-                            const lockPromises = filteredParticipants.map(async (participant) => {
-                                if (!scores[participant.id]?.locked) {
-                                    const participantScores = scores[participant.id];
-                                    const inserts = criteria.map(c => ({
-                                        judge_id: judgeId,
-                                        participant_id: participant.id,
-                                        criteria_id: c.id,
-                                        score: participantScores[c.id] ?? 0,
-                                        submitted_at: new Date().toISOString()
-                                    }));
-                                    await supabase
-                                        .from('scores')
-                                        .upsert(inserts, { onConflict: 'judge_id,participant_id,criteria_id' });
-                                }
-                            });
-                            await Promise.all(lockPromises);
-                            setSaving(false);
-                            onFinish();
-                        }}
-                        disabled={saving}
-                        className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-xl transition-all shadow-lg disabled:opacity-50 text-white ${isDarkMode ? 'bg-maroon hover:bg-maroon-dark shadow-maroon/50' : 'bg-maroon hover:bg-maroon-dark shadow-maroon/25'}`}
-                    >
-                        <FaCheck className="w-5 h-5" />
-                        Complete Scoring
-                    </button>
+                    <div className="relative min-h-[46px] w-full sm:w-auto sm:min-w-[200px]"> {/* Placeholder to prevent layout shift */}
+                        {!isBottomVisible && (
+                            <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
+                                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6 flex items-center justify-center sm:justify-end">
+                                    <motion.button
+                                        layoutId="scoring-action-button"
+                                        onClick={handleToggleLock}
+                                        disabled={saving}
+                                        transition={{
+                                            type: "spring",
+                                            stiffness: 300,
+                                            damping: 30
+                                        }}
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        className={`pointer-events-auto w-full sm:w-auto flex items-center justify-center gap-2 font-bold text-white shadow-lg disabled:opacity-70 disabled:cursor-not-allowed rounded-xl px-6 py-2.5 ${
+                                            filteredParticipants.every(p => scores[p.id]?.locked)
+                                                ? isDarkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-600 hover:bg-gray-700'
+                                                : isDarkMode ? 'bg-maroon hover:bg-maroon-light' : 'bg-maroon hover:bg-maroon-dark'
+                                        }`}
+                                    >
+                                        {filteredParticipants.every(p => scores[p.id]?.locked) ? (
+                                            <>
+                                                <FaUnlock className="w-4 h-4" />
+                                                Unlock Scoring
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FaCheck className="w-5 h-5" />
+                                                Complete Scoring
+                                            </>
+                                        )}
+                                    </motion.button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="w-full h-full flex justify-center sm:justify-end items-center">
+                            {isBottomVisible && (
+                                <motion.button
+                                    layoutId="scoring-action-button"
+                                    onClick={handleToggleLock}
+                                    disabled={saving}
+                                    transition={{
+                                        type: "spring",
+                                        stiffness: 300,
+                                        damping: 30
+                                    }}
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className={`pointer-events-auto w-full sm:w-auto flex items-center justify-center gap-2 font-bold text-white shadow-lg disabled:opacity-70 disabled:cursor-not-allowed rounded-xl px-6 py-2.5 ${
+                                        filteredParticipants.every(p => scores[p.id]?.locked)
+                                            ? isDarkMode ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-600 hover:bg-gray-700'
+                                            : isDarkMode ? 'bg-maroon hover:bg-maroon-light' : 'bg-maroon hover:bg-maroon-dark'
+                                    }`}
+                                >
+                                    {filteredParticipants.every(p => scores[p.id]?.locked) ? (
+                                        <>
+                                            <FaUnlock className="w-4 h-4" />
+                                            Unlock Scoring
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FaCheck className="w-5 h-5" />
+                                            Complete Scoring
+                                        </>
+                                    )}
+                                </motion.button>
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

@@ -608,46 +608,81 @@
   }
   
   /* ============================================
-     CUSTOM SCROLLBAR STYLES
+     CUSTOM SCROLLBAR STYLES - Thick & User-Friendly
      ============================================ */
   
-  /* Light Mode Scrollbar */
+  /* Light Mode Scrollbar - Thick */
   .custom-scrollbar-light::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 16px;
+    height: 16px;
   }
 
   .custom-scrollbar-light::-webkit-scrollbar-track {
     background: rgba(0, 0, 0, 0.05);
-    border-radius: 4px;
+    border-radius: 8px;
+    margin: 4px 0;
   }
 
   .custom-scrollbar-light::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
+    background: rgba(128, 0, 0, 0.3);
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    transition: all 0.2s ease;
   }
 
   .custom-scrollbar-light::-webkit-scrollbar-thumb:hover {
-    background: rgba(128, 0, 0, 0.5);
+    background: rgba(128, 0, 0, 0.6);
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
 
-  /* Dark Mode Scrollbar */
+  .custom-scrollbar-light::-webkit-scrollbar-thumb:active {
+    background: rgba(128, 0, 0, 0.8);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  /* Dark Mode Scrollbar - Thick */
   .custom-scrollbar-dark::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 16px;
+    height: 16px;
   }
 
   .custom-scrollbar-dark::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
+    border-radius: 8px;
+    margin: 4px 0;
   }
 
   .custom-scrollbar-dark::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
+    background: rgba(255, 215, 0, 0.4);
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    transition: all 0.2s ease;
   }
 
   .custom-scrollbar-dark::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 215, 0, 0.6);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar-dark::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 215, 0, 0.8);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  /* Firefox Scrollbar Support */
+  .custom-scrollbar-light {
+    scrollbar-width: thick;
+    scrollbar-color: rgba(128, 0, 0, 0.3) rgba(0, 0, 0, 0.05);
+  }
+
+  .custom-scrollbar-dark {
+    scrollbar-width: thick;
+    scrollbar-color: rgba(255, 215, 0, 0.4) rgba(255, 255, 255, 0.05);
   }
 }

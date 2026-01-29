@@ -10,7 +10,7 @@
 export interface Event {
     id: number;
     name: string;
-    description?: string;
+    photo_url?: string;
     date: string;
     event_start?: string;
     end_date?: string;
@@ -81,6 +81,7 @@ export interface Auditor {
     event_id: number;
     name: string;
     code: string;
+    photo_url?: string;
     is_active: boolean;
     created_at: string;
 }
@@ -162,7 +163,7 @@ export interface LeaderboardEntry {
 
 export interface CreateEventInput {
     name: string;
-    description?: string;
+    photo_url?: string;
     date: string;
     end_date?: string;
     start_time?: string;

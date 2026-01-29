@@ -506,24 +506,6 @@ const AuditorResults = () => {
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
-            {/* Header */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center mb-8"
-            >
-                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full mb-4 ${isDarkMode ? 'bg-maroon/20 text-maroon-light' : 'bg-maroon/10 text-maroon'}`}>
-                    <FaChartBar className="w-4 h-4" />
-                    <span className="text-sm font-medium">Event Results</span>
-                </div>
-                <h1 className={`text-3xl md:text-4xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-maroon'}`}>
-                    {event?.name || 'Event Results'}
-                </h1>
-                <p className={isDarkMode ? 'text-white/60' : 'text-gray-600'}>
-                    Final rankings and scores
-                </p>
-            </motion.div>
-
             {/* Main Score Section Tabs - Only shown when auditor_detailed_view is enabled */}
             {event?.auditor_detailed_view && (
                 <motion.div
@@ -578,7 +560,7 @@ const AuditorResults = () => {
                         <div className="flex gap-1.5">
                             <button
                                 onClick={() => setSelectedGender('male')}
-                                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${selectedGender === 'male'
+                                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm flex-1 ${selectedGender === 'male'
                                     ? isDarkMode ? 'bg-white text-blue-600 shadow-md' : 'bg-white text-blue-600 shadow-md ring-1 ring-black/5'
                                     : isDarkMode ? 'bg-transparent text-white/70 hover:text-white hover:bg-white/20' : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
                                     }`}
@@ -588,7 +570,7 @@ const AuditorResults = () => {
                             </button>
                             <button
                                 onClick={() => setSelectedGender('female')}
-                                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-sm flex-1 ${selectedGender === 'female'
+                                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm flex-1 ${selectedGender === 'female'
                                     ? isDarkMode ? 'bg-white text-pink-600 shadow-md' : 'bg-white text-pink-600 shadow-md ring-1 ring-black/5'
                                     : isDarkMode ? 'bg-transparent text-white/70 hover:text-white hover:bg-white/20' : 'bg-transparent text-gray-500 hover:text-gray-900 hover:bg-white/50'
                                     }`}
@@ -606,7 +588,7 @@ const AuditorResults = () => {
                 {/* TABLE 3: Final Results - Show when no detailed view OR when final-results tab is active */}
                 {(!event?.auditor_detailed_view || activeScoreTab === 'final-results') && (
                     <motion.div
-                        key="final-results"
+                        key={`final-results-${selectedGender}`}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
@@ -630,7 +612,7 @@ const AuditorResults = () => {
                         </div>
 
                         {/* Table Content */}
-                        <div className="p-6">
+                        <div>
                             {filteredResultsData && filteredResultsData.length > 0 ? (
                                 <div className="overflow-x-auto">
                                     <table className="w-full border-collapse">
@@ -699,16 +681,17 @@ const AuditorResults = () => {
                                                         {item.finalRank !== null ? (
                                                             <div className="flex items-center justify-center gap-2">
                                                                 {item.finalRank <= 3 && (
-                                                                    <FaMedal className={`w-5 h-5 ${item.finalRank === 1 ? 'text-yellow-500' :
-                                                                        item.finalRank === 2 ? 'text-gray-400' :
-                                                                            'text-amber-600'
-                                                                        }`} />
+                                                                    <FaMedal className={`w-5 h-5 ${
+                                                                        item.finalRank === 1 ? (isDarkMode ? 'text-yellow-400' : 'text-yellow-500') :
+                                                                        item.finalRank === 2 ? (isDarkMode ? 'text-gray-300' : 'text-gray-400') :
+                                                                        (isDarkMode ? 'text-amber-400' : 'text-amber-600')
+                                                                    }`} />
                                                                 )}
                                                                 <span className={
-                                                                    item.finalRank === 1 ? 'text-yellow-600' :
-                                                                        item.finalRank === 2 ? 'text-gray-500' :
-                                                                            item.finalRank === 3 ? 'text-amber-600' :
-                                                                                isDarkMode ? 'text-white' : 'text-gray-600'
+                                                                    item.finalRank === 1 ? (isDarkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                                                    item.finalRank === 2 ? (isDarkMode ? 'text-gray-300' : 'text-gray-500') :
+                                                                    item.finalRank === 3 ? (isDarkMode ? 'text-amber-400' : 'text-amber-600') :
+                                                                    isDarkMode ? 'text-white' : 'text-gray-600'
                                                                 }>
                                                                     {getOrdinal(item.finalRank)}
                                                                 </span>
@@ -723,7 +706,7 @@ const AuditorResults = () => {
                                     </table>
                                 </div>
                             ) : (
-                                <div className={`text-center py-12 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                <div className={`text-center py-12 p-6 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
                                     <FaChartBar className={`w-12 h-12 mx-auto mb-4 ${isDarkMode ? 'text-white/20' : 'text-gray-300'}`} />
                                     <p className="text-lg font-medium mb-2">No Results Yet</p>
                                     <p className="text-sm">Scores have not been submitted for this event.</p>
@@ -736,7 +719,7 @@ const AuditorResults = () => {
                 {/* TABLE 1: Judge Rankings by Criteria - Only shown when judge-scores tab is active */}
                 {event?.auditor_detailed_view && activeScoreTab === 'judge-scores' && (
                     <motion.div
-                        key="judge-scores"
+                        key={`judge-scores-${selectedGender}`}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
@@ -752,7 +735,7 @@ const AuditorResults = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="p-6">
+                        <div className="p-6 pb-0">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                                 <div>
                                     <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-white/80' : 'text-gray-700'}`}>Select Judge</label>
@@ -781,7 +764,9 @@ const AuditorResults = () => {
                                     </select>
                                 </div>
                             </div>
+                        </div>
 
+                        <div>
                             {table1Data ? (
                                 <div className="overflow-x-auto">
                                     <table className="w-full border-collapse">
@@ -832,12 +817,17 @@ const AuditorResults = () => {
                                                             —
                                                         </td>
                                                     ))}
-                                                    <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 text-maroon-light bg-maroon/10' : 'border-gray-200 text-maroon bg-maroon/5'}`}>
+                                                    <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 text-red-300 bg-maroon/10' : 'border-gray-200 text-maroon bg-maroon/5'}`}>
                                                         {item.total.toFixed(1)}
                                                     </td>
                                                     <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 bg-yellow-500/10' : 'border-gray-200 bg-yellow-50'}`}>
                                                         {item.rank !== null ? (
-                                                            <span className={item.rank === 1 ? 'text-yellow-600' : item.rank === 2 ? 'text-gray-500' : item.rank === 3 ? 'text-amber-600' : isDarkMode ? 'text-white' : 'text-gray-600'}>
+                                                            <span className={
+                                                                item.rank === 1 ? (isDarkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                                                item.rank === 2 ? (isDarkMode ? 'text-gray-300' : 'text-gray-500') :
+                                                                item.rank === 3 ? (isDarkMode ? 'text-amber-400' : 'text-amber-600') :
+                                                                isDarkMode ? 'text-white' : 'text-gray-600'
+                                                            }>
                                                                 {getOrdinal(item.rank)}
                                                             </span>
                                                         ) : '—'}
@@ -848,7 +838,7 @@ const AuditorResults = () => {
                                     </table>
                                 </div>
                             ) : (
-                                <div className={`text-center py-8 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                <div className={`text-center py-12 p-6 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
                                     Select a judge and category to view rankings
                                 </div>
                             )}
@@ -859,7 +849,7 @@ const AuditorResults = () => {
                 {/* TABLE 2: Scores by Judge - Only shown when average-scores tab is active */}
                 {event?.auditor_detailed_view && activeScoreTab === 'average-scores' && (
                     <motion.div
-                        key="average-scores"
+                        key={`average-scores-${selectedGender}`}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
@@ -878,7 +868,7 @@ const AuditorResults = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="p-6">
+                        <div className="p-6 pb-0">
                             <div className="mb-6">
                                 <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-white/80' : 'text-gray-700'}`}>Select Category</label>
                                 <select
@@ -892,7 +882,9 @@ const AuditorResults = () => {
                                     ))}
                                 </select>
                             </div>
+                        </div>
 
+                        <div>
                             {table2Data ? (
                                 <div className="overflow-x-auto">
                                     <table className="w-full border-collapse">
@@ -951,7 +943,12 @@ const AuditorResults = () => {
                                                     </td>
                                                     <td className={`border px-4 py-3 text-center font-bold ${isDarkMode ? 'border-white/10 bg-yellow-500/10' : 'border-gray-200 bg-yellow-50'}`}>
                                                         {item.finalRank !== null ? (
-                                                            <span className={item.finalRank === 1 ? 'text-yellow-600' : item.finalRank === 2 ? 'text-gray-500' : item.finalRank === 3 ? 'text-amber-600' : isDarkMode ? 'text-white' : 'text-gray-600'}>
+                                                            <span className={
+                                                                item.finalRank === 1 ? (isDarkMode ? 'text-yellow-400' : 'text-yellow-600') :
+                                                                item.finalRank === 2 ? (isDarkMode ? 'text-gray-300' : 'text-gray-500') :
+                                                                item.finalRank === 3 ? (isDarkMode ? 'text-amber-400' : 'text-amber-600') :
+                                                                isDarkMode ? 'text-white' : 'text-gray-600'
+                                                            }>
                                                                 {getOrdinal(item.finalRank)}
                                                             </span>
                                                         ) : '—'}
@@ -962,7 +959,7 @@ const AuditorResults = () => {
                                     </table>
                                 </div>
                             ) : (
-                                <div className={`text-center py-8 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
+                                <div className={`text-center py-12 p-6 ${isDarkMode ? 'text-white/60' : 'text-gray-500'}`}>
                                     Select a category to view judge scores
                                 </div>
                             )}

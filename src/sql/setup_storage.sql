@@ -102,6 +102,30 @@ ON storage.objects FOR DELETE
 USING (bucket_id = 'tabulation-category');
 
 -- ============================================================
+-- 4. STORAGE POLICIES - AUDITOR BUCKET
+-- ============================================================
+
+-- Allow public read access to auditor photos
+CREATE POLICY "auditor_public_read"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'tabulation-auditor');
+
+-- Allow public insert for auditor photos
+CREATE POLICY "auditor_public_insert"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'tabulation-auditor');
+
+-- Allow public update for auditor photos
+CREATE POLICY "auditor_public_update"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'tabulation-auditor');
+
+-- Allow public delete for auditor photos
+CREATE POLICY "auditor_public_delete"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'tabulation-auditor');
+
+-- ============================================================
 -- NOTE: Policies are set to PUBLIC access (no authentication required)
 -- This allows the application to upload/manage files without auth
 -- If you need to restrict access, modify the policies above
