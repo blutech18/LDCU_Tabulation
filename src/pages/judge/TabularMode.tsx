@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FaChevronLeft, FaTable, FaTrophy, FaSync, FaUnlock } from 'react-icons/fa';
+import { FaChevronLeft, FaTable, FaTrophy, FaSync } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import ScoringTabular, { ScoringTabularRef } from '../../components/judge/ScoringTabular';
 import RankingTabular, { RankingTabularRef } from '../../components/judge/RankingTabular';
@@ -23,7 +23,6 @@ const TabularMode = () => {
     const [category, setCategory] = useState<CategoryWithEvent | null>(null);
     const [loading, setLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [isLocked, setIsLocked] = useState(false);
     const scoringTabularRef = useRef<ScoringTabularRef>(null);
     const rankingTabularRef = useRef<RankingTabularRef>(null);
 
@@ -131,19 +130,7 @@ const TabularMode = () => {
         }
     };
 
-    const handleUnlock = async () => {
-        if (!category) return;
-        try {
-            const isRankingBased = category.tabular_type === 'ranking';
-            if (isRankingBased && rankingTabularRef.current) {
-                await rankingTabularRef.current.unlock();
-            } else if (!isRankingBased && scoringTabularRef.current) {
-                await scoringTabularRef.current.unlock();
-            }
-        } catch (error) {
-            console.error('Error unlocking data:', error);
-        }
-    };
+
 
     if (loading) {
         return (
@@ -230,7 +217,6 @@ const TabularMode = () => {
                         onFinish={handleFinish}
                         isDarkMode={isDarkMode}
                         eventParticipantType={category.events.participant_type}
-                        onLockChange={setIsLocked}
                     />
                 ) : (
                     <ScoringTabular
@@ -240,7 +226,6 @@ const TabularMode = () => {
                         onFinish={handleFinish}
                         isDarkMode={isDarkMode}
                         eventParticipantType={category.events.participant_type}
-                        onLockChange={setIsLocked}
                     />
                 )}
             </motion.div>
