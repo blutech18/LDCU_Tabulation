@@ -32,12 +32,41 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
     const [firstCriteriaId, setFirstCriteriaId] = useState<number | null>(null);
     const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
     const [isLocked, setIsLocked] = useState(false);
+    const [categoryName, setCategoryName] = useState<string>('');
+    const previousRankingsRef = useRef<Record<number, number>>({});
+    const hasBeenSubmittedRef = useRef<boolean>(false);
+    const isDraggingRef = useRef<boolean>(false);
+    const pendingLogRef = useRef<boolean>(false);
     
     // Floating button visibility state
     const [isBottomVisible, setIsBottomVisible] = useState(false);
     const observerRef = useRef<IntersectionObserver | null>(null);
 
     const isIndividual = eventParticipantType === 'individual';
+
+    // Log judge activity
+    const logJudgeActivity = useCallback(async (
+        action: 'submit' | 'unlock' | 'score_change',
+        description: string,
+        metadata: Record<string, any> = {}
+    ) => {
+        try {
+            await supabase.from('judge_activity_logs').insert({
+                judge_id: judgeId,
+                category_id: categoryId,
+                action,
+                description,
+                metadata: {
+                    ...metadata,
+                    category_name: categoryName,
+                    tabular_type: 'ranking',
+                    gender: isIndividual ? selectedGender : undefined,
+                }
+            });
+        } catch (error) {
+            console.error('Error logging judge activity:', error);
+        }
+    }, [judgeId, categoryId, categoryName, selectedGender, isIndividual]);
 
     // Callback ref to handle IntersectionObserver setup
     const setupIntersectionObserver = useCallback((element: HTMLDivElement | null) => {
@@ -87,6 +116,13 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
             await supabase
                 .from('scores')
                 .upsert(rankings, { onConflict: 'judge_id,participant_id,criteria_id' });
+
+            // Log unlock action
+            const participantNames = contestants.map(c => c.name).join(', ');
+            await logJudgeActivity('unlock', `Unlocked ranking for ${contestants.length} participant(s)`, {
+                participant_count: contestants.length,
+                participant_names: participantNames,
+            });
             
             setIsLocked(false);
         } catch (error) {
@@ -94,17 +130,21 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
         } finally {
             setSaving(false);
         }
-    }, [contestants, firstCriteriaId, judgeId]);
+    }, [contestants, firstCriteriaId, judgeId, logJudgeActivity]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         
-        // First, get the category to find its event_id
+        // First, get the category to find its event_id and name
         const { data: categoryData } = await supabase
             .from('categories')
-            .select('event_id')
+            .select('event_id, name')
             .eq('id', categoryId)
             .single();
+
+        if (categoryData?.name) {
+            setCategoryName(categoryData.name);
+        }
 
         // Fetch criteria for this category
         const { data: criteriaData } = await supabase
@@ -168,6 +208,11 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
         // Check if category is locked
         const categoryLocked = rankingData.some(r => r.submitted_at);
         setIsLocked(categoryLocked);
+        
+        // Track if rankings have been submitted before (for logging changes after unlock)
+        if (categoryLocked || rankingData.length > 0) {
+            hasBeenSubmittedRef.current = true;
+        }
 
         // Apply existing rankings or assign default order
         const rankedContestants: RankedParticipant[] = contestantsList.map((contestant, index) => {
@@ -182,6 +227,14 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
         rankedContestants.sort((a, b) => a.rank - b.rank);
 
         setContestants(rankedContestants);
+        
+        // Store previous rankings for change detection
+        const prevRankings: Record<number, number> = {};
+        rankedContestants.forEach(c => {
+            prevRankings[c.id] = c.rank;
+        });
+        previousRankingsRef.current = prevRankings;
+        
         setLoading(false);
     }, [categoryId, judgeId]);
 
@@ -212,7 +265,7 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
     }, [saveTimeout]);
 
     // Auto-save rankings to database
-    const saveRankingsToDb = useCallback(async (contestantsToSave: RankedParticipant[]) => {
+    const saveRankingsToDb = useCallback(async (contestantsToSave: RankedParticipant[], logChange = false) => {
         if (!firstCriteriaId) return;
         
         setSaving(true);
@@ -224,18 +277,51 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
                 criteria_id: firstCriteriaId,
                 score: 0,
                 rank: contestant.rank,
-                submitted_at: null,
+                submitted_at: isLocked ? new Date().toISOString() : null,
             }));
 
             await supabase
                 .from('scores')
                 .upsert(rankings, { onConflict: 'judge_id,participant_id,criteria_id' });
+
+            // Log rank changes if previously submitted (even after unlock)
+            if (hasBeenSubmittedRef.current && logChange) {
+                const changes = contestantsToSave.filter(c => {
+                    const prevRank = previousRankingsRef.current[c.id];
+                    return prevRank !== undefined && prevRank !== c.rank;
+                }).map(c => {
+                    const oldRank = previousRankingsRef.current[c.id];
+                    const newRank = c.rank;
+                    return {
+                        participant_id: c.id,
+                        participant_name: c.name,
+                        old_rank: oldRank,
+                        new_rank: newRank,
+                    };
+                });
+
+                if (changes.length > 0) {
+                    // Create descriptive message for each change
+                    const changeDescriptions = changes.map(ch => 
+                        `${ch.participant_name}: #${ch.old_rank} → #${ch.new_rank}`
+                    ).join('\n');
+                    
+                    await logJudgeActivity('score_change', changeDescriptions, {
+                        changes,
+                    });
+                }
+
+                // Update previous rankings ref
+                contestantsToSave.forEach(c => {
+                    previousRankingsRef.current[c.id] = c.rank;
+                });
+            }
         } catch (error) {
             console.error('Error saving rankings:', error);
         } finally {
             setSaving(false);
         }
-    }, [judgeId, firstCriteriaId]);
+    }, [judgeId, firstCriteriaId, logJudgeActivity]);
 
     // Handle Toggle Lock (Complete/Unlock)
     const handleToggleLock = async () => {
@@ -243,6 +329,7 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
         
         setSaving(true);
         try {
+            // Submit ALL contestants (both genders for individual events)
             const rankings = contestants.map((contestant) => ({
                 judge_id: judgeId,
                 participant_id: contestant.id,
@@ -255,6 +342,43 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
             await supabase
                 .from('scores')
                 .upsert(rankings, { onConflict: 'judge_id,participant_id,criteria_id' });
+            
+            if (isLocked) {
+                // Log unlock action for all contestants
+                const participantNames = contestants.map(c => c.name).join(', ');
+                await logJudgeActivity('unlock', `Unlocked ranking for ${contestants.length} participant(s)`, {
+                    participant_count: contestants.length,
+                    participant_names: participantNames,
+                });
+            } else {
+                // Log submit action for ALL contestants (both genders)
+                const rankingsData = contestants.map(c => ({
+                    participant_id: c.id,
+                    participant_name: c.name,
+                    participant_department: c.department,
+                    participant_gender: c.gender,
+                    rank: c.rank,
+                }));
+                const criteriaInfo = criteria.map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    min_score: c.min_score,
+                    max_score: c.max_score,
+                }));
+                await logJudgeActivity('submit', `Submitted rankings for ${contestants.length} participant(s)`, {
+                    participant_count: contestants.length,
+                    criteria: criteriaInfo,
+                    rankings: rankingsData,
+                });
+                
+                // Mark as submitted and update previous rankings ref
+                hasBeenSubmittedRef.current = true;
+                const prevRankings: Record<number, number> = {};
+                contestants.forEach(c => {
+                    prevRankings[c.id] = c.rank;
+                });
+                previousRankingsRef.current = prevRankings;
+            }
             
             setIsLocked(!isLocked);
             if (!isLocked) {
@@ -297,12 +421,57 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
             clearTimeout(saveTimeout);
         }
         
-        // Debounce save - only save after 0.5 seconds of inactivity
+        // Mark that we're dragging and have pending changes to log
+        isDraggingRef.current = true;
+        pendingLogRef.current = true;
+        
+        // Debounce save - only save after 0.5 seconds of inactivity, but don't log yet
         const newTimeout = setTimeout(() => {
-            saveRankingsToDb(allContestants);
+            saveRankingsToDb(allContestants, false);
         }, 500);
         
         setSaveTimeout(newTimeout);
+    };
+
+    // Handle drag end - log changes only after drop is complete
+    const handleDragEnd = () => {
+        isDraggingRef.current = false;
+        
+        // If there are pending changes to log, log them now
+        if (pendingLogRef.current && hasBeenSubmittedRef.current) {
+            pendingLogRef.current = false;
+            
+            // Get the current filtered contestants for logging
+            const currentContestants = isIndividual
+                ? contestants.filter(c => c.gender === selectedGender)
+                : contestants;
+            
+            // Calculate changes
+            const changes = currentContestants.filter(c => {
+                const prevRank = previousRankingsRef.current[c.id];
+                return prevRank !== undefined && prevRank !== c.rank;
+            }).map(c => ({
+                participant_id: c.id,
+                participant_name: c.name,
+                old_rank: previousRankingsRef.current[c.id],
+                new_rank: c.rank,
+            }));
+
+            if (changes.length > 0) {
+                const changeDescriptions = changes.map(ch => 
+                    `${ch.participant_name}: #${ch.old_rank} → #${ch.new_rank}`
+                ).join('\n');
+                
+                logJudgeActivity('score_change', changeDescriptions, {
+                    changes,
+                });
+                
+                // Update previous rankings ref after logging
+                currentContestants.forEach(c => {
+                    previousRankingsRef.current[c.id] = c.rank;
+                });
+            }
+        }
     };
 
     // Handle rank input change - moves contestant to new position
@@ -336,8 +505,8 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
         
         setContestants(allContestants);
         
-        // Auto-save immediately after rank change
-        saveRankingsToDb(allContestants);
+        // Auto-save immediately after rank change (with logging for input changes)
+        saveRankingsToDb(allContestants, true);
     };
 
 
@@ -435,6 +604,7 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
                                 value={contestant}
                                 className={`cursor-grab active:cursor-grabbing ${isLocked ? 'pointer-events-none' : ''}`}
                                 dragListener={!isLocked}
+                                onDragEnd={handleDragEnd}
                             >
                                 <motion.div
                                     initial={{ opacity: 0, x: -20 }}

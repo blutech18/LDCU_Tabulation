@@ -7,34 +7,39 @@ interface StatsCardProps {
     value: number | string;
     color: 'primary' | 'accent' | 'success' | 'warning';
     delay?: number;
+    subtext?: string;
 }
 
 const colorClasses = {
-    primary: 'from-primary-500 to-primary-600 text-primary-600 bg-primary-50',
-    accent: 'from-accent-500 to-accent-600 text-accent-600 bg-accent-50',
-    success: 'from-green-500 to-green-600 text-green-600 bg-green-50',
-    warning: 'from-orange-500 to-orange-600 text-orange-600 bg-orange-50',
+    primary: 'text-primary-600',
+    accent: 'text-accent-600',
+    success: 'text-green-600',
+    warning: 'text-orange-600',
 };
 
-const StatsCard = ({ icon, label, value, color, delay = 0 }: StatsCardProps) => {
+const StatsCard = ({ icon, label, value, color, delay = 0, subtext }: StatsCardProps) => {
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay }}
-            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-300"
+            className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-300 flex flex-col justify-between h-full"
         >
-            <div className="flex items-center gap-4">
-                <div
-                    className={`w-14 h-14 rounded-xl flex items-center justify-center ${colorClasses[color].split(' ').slice(2).join(' ')
-                        }`}
-                >
-                    <span className={colorClasses[color].split(' ')[2]}>{icon}</span>
+            <div className="flex justify-between items-start mb-2">
+                <p className="text-sm font-medium text-gray-500">{label}</p>
+                <div className={`${colorClasses[color]}`}>
+                    {icon}
                 </div>
-                <div>
-                    <p className="text-3xl font-bold text-gray-900">{value}</p>
-                    <p className="text-sm text-gray-500 font-medium">{label}</p>
-                </div>
+            </div>
+            
+            <div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-1">{value}</h3>
+                {subtext && (
+                    <p className="text-xs text-gray-400">{subtext}</p>
+                )}
+                {!subtext && (
+                    <p className="text-xs text-gray-400">+0% from last month</p>
+                )}
             </div>
         </motion.div>
     );

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FaPlus, FaEdit, FaTrash, FaCopy, FaCheck, FaUserTie, FaImage, FaTimes } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaCopy, FaCheck, FaUserTie, FaImage, FaTimes, FaHistory } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import Modal from '../../components/common/Modal';
+import JudgeLogsModal from '../../components/admin/JudgeLogsModal';
 import type { Judge, Event } from '../../types';
 
 const JudgesPage = () => {
@@ -19,6 +20,10 @@ const JudgesPage = () => {
     const [judgeImageFile, setJudgeImageFile] = useState<File | null>(null);
     const [judgeImagePreview, setJudgeImagePreview] = useState<string>('');
     const [uploading, setUploading] = useState(false);
+
+    // Logs modal state
+    const [showLogsModal, setShowLogsModal] = useState(false);
+    const [selectedJudgeForLogs, setSelectedJudgeForLogs] = useState<Judge | null>(null);
 
     useEffect(() => {
         fetchEvents();
@@ -189,6 +194,16 @@ const JudgesPage = () => {
         setShowModal(true);
     };
 
+    const openLogsModal = (judge: Judge) => {
+        setSelectedJudgeForLogs(judge);
+        setShowLogsModal(true);
+    };
+
+    const closeLogsModal = () => {
+        setShowLogsModal(false);
+        setSelectedJudgeForLogs(null);
+    };
+
     const closeModal = () => {
         setShowModal(false);
         setEditingJudge(null);
@@ -277,6 +292,7 @@ const JudgesPage = () => {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.2, delay: index * 0.05 }}
                             className="relative h-72 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 group cursor-pointer"
+                            onClick={() => openLogsModal(judge)}
                         >
                             {/* Full Background Image */}
                             <div className="absolute inset-0 bg-gray-900">
@@ -297,6 +313,13 @@ const JudgesPage = () => {
 
                             {/* Action Buttons (Top-Right) */}
                             <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); openLogsModal(judge); }}
+                                    className="p-3 text-white/80 hover:text-white bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full transition-all border border-white/10"
+                                    title="View Activity Logs"
+                                >
+                                    <FaHistory className="w-5 h-5" />
+                                </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); openEditModal(judge); }}
                                     className="p-3 text-white/80 hover:text-white bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full transition-all border border-white/10"
@@ -443,6 +466,13 @@ const JudgesPage = () => {
                     </button>
                 </div>
             </Modal>
+
+            {/* Judge Logs Modal */}
+            <JudgeLogsModal
+                isOpen={showLogsModal}
+                onClose={closeLogsModal}
+                judge={selectedJudgeForLogs}
+            />
         </div>
     );
 };

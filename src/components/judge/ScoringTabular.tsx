@@ -33,7 +33,34 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
+    const [categoryName, setCategoryName] = useState<string>('');
     const saveTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
+    const previousScoresRef = useRef<ScoreState>({});
+    const hasBeenSubmittedRef = useRef<Record<number, boolean>>({});
+
+    // Log judge activity
+    const logJudgeActivity = useCallback(async (
+        action: 'submit' | 'unlock' | 'score_change',
+        description: string,
+        metadata: Record<string, any> = {}
+    ) => {
+        try {
+            await supabase.from('judge_activity_logs').insert({
+                judge_id: judgeId,
+                category_id: categoryId,
+                action,
+                description,
+                metadata: {
+                    ...metadata,
+                    category_name: categoryName,
+                    tabular_type: 'scoring',
+                    gender: isIndividual ? selectedGender : undefined,
+                }
+            });
+        } catch (error) {
+            console.error('Error logging judge activity:', error);
+        }
+    }, [judgeId, categoryId, categoryName, selectedGender]);
 
     // Floating button visibility state
     const [isBottomVisible, setIsBottomVisible] = useState(false);
@@ -110,6 +137,13 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                 .in('participant_id', participantIds)
                 .in('criteria_id', criteriaIds);
 
+            // Log unlock action
+            const participantNames = filteredParticipants.map(p => p.name).join(', ');
+            await logJudgeActivity('unlock', `Unlocked scoring for ${filteredParticipants.length} participant(s)`, {
+                participant_count: filteredParticipants.length,
+                participant_names: participantNames,
+            });
+
             setScores((prev) => {
                 const newScores = { ...prev };
                 participantIds.forEach(pId => {
@@ -124,15 +158,19 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
         } finally {
             setSaving(false);
         }
-    }, [criteria, filteredParticipants, judgeId]);
+    }, [criteria, filteredParticipants, judgeId, logJudgeActivity]);
 
     const fetchData = useCallback(async () => {
-        // First, get the category to find its event_id
+        // First, get the category to find its event_id and name
         const { data: categoryData } = await supabase
             .from('categories')
-            .select('event_id')
+            .select('event_id, name')
             .eq('id', categoryId)
             .single();
+
+        if (categoryData?.name) {
+            setCategoryName(categoryData.name);
+        }
 
         // Try to fetch participants for this event
         // Fallback to all participants if event_id column doesn't exist
@@ -211,10 +249,13 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
             // Use submitted_at as locked indicator
             if (score.submitted_at) {
                 initialScores[score.participant_id].locked = true;
+                // Track that this participant was previously submitted
+                hasBeenSubmittedRef.current[score.participant_id] = true;
             }
         });
 
         setScores(initialScores);
+        previousScoresRef.current = JSON.parse(JSON.stringify(initialScores));
         setLoading(false);
     }, [categoryId, judgeId]);
 
@@ -241,6 +282,9 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
         try {
             // Check if participant is already locked
             const isLocked = scores[participantId]?.locked;
+            const participant = participants.find(p => p.id === participantId);
+            const criteriaItem = criteria.find(c => c.id === criteriaId);
+            const oldScore = previousScoresRef.current[participantId]?.[criteriaId] ?? 0;
             
             await supabase
                 .from('scores')
@@ -252,12 +296,31 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                     // Only set submitted_at if already locked, otherwise leave it null
                     submitted_at: isLocked ? new Date().toISOString() : null
                 }, { onConflict: 'judge_id,participant_id,criteria_id' });
+
+            // Log score change if participant was previously submitted (even after unlock)
+            const wasSubmitted = hasBeenSubmittedRef.current[participantId] || isLocked;
+            if (wasSubmitted && oldScore !== score) {
+                await logJudgeActivity('score_change', `Changed score for "${participant?.name || 'Unknown'}" in "${criteriaItem?.name || 'Unknown Criteria'}": ${oldScore} → ${score}`, {
+                    participant_id: participantId,
+                    participant_name: participant?.name,
+                    criteria_id: criteriaId,
+                    criteria_name: criteriaItem?.name,
+                    old_score: oldScore,
+                    new_score: score,
+                });
+            }
+
+            // Update previous scores ref
+            if (!previousScoresRef.current[participantId]) {
+                previousScoresRef.current[participantId] = {};
+            }
+            previousScoresRef.current[participantId][criteriaId] = score;
         } catch (error) {
             console.error('Error saving score:', error);
         } finally {
             setSaving(false);
         }
-    }, [judgeId, scores]);
+    }, [judgeId, scores, participants, criteria, logJudgeActivity]);
 
     // Convert rank to ordinal format (1st, 2nd, 3rd, etc.)
     const getOrdinal = (rank: number) => {
@@ -329,6 +392,13 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                 .in('participant_id', participantIds)
                 .in('criteria_id', criteriaIds);
 
+            // Log unlock action
+            const participantNames = filteredParticipants.map(p => p.name).join(', ');
+            await logJudgeActivity('unlock', `Unlocked scoring for ${filteredParticipants.length} participant(s)`, {
+                participant_count: filteredParticipants.length,
+                participant_names: participantNames,
+            });
+
             setScores((prev) => {
                 const newScores = { ...prev };
                 participantIds.forEach(pId => {
@@ -356,6 +426,37 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                 }
             });
             await Promise.all(lockPromises);
+
+            // Log submit action with detailed scores per criteria
+            const scoresData = filteredParticipants.map(p => {
+                const criteriaScores: Record<string, number> = {};
+                criteria.forEach(c => {
+                    criteriaScores[c.name] = scores[p.id]?.[c.id] ?? 0;
+                });
+                return {
+                    participant_id: p.id,
+                    participant_name: p.name,
+                    participant_department: p.department,
+                    criteria_scores: criteriaScores,
+                    total_score: calculateTotal(p.id),
+                };
+            });
+            const criteriaInfo = criteria.map(c => ({
+                id: c.id,
+                name: c.name,
+                min_score: c.min_score,
+                max_score: c.max_score,
+            }));
+            await logJudgeActivity('submit', `Submitted scores for ${filteredParticipants.length} participant(s)`, {
+                participant_count: filteredParticipants.length,
+                criteria: criteriaInfo,
+                scores: scoresData,
+            });
+            
+            // Mark participants as submitted for future change tracking
+            filteredParticipants.forEach(p => {
+                hasBeenSubmittedRef.current[p.id] = true;
+            });
             
             // Update local state to locked
             setScores((prev) => {
@@ -367,6 +468,9 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                 });
                 return newScores;
             });
+
+            // Update previous scores ref
+            previousScoresRef.current = JSON.parse(JSON.stringify(scores));
             
             onFinish();
         }

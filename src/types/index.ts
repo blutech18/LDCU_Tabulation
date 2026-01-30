@@ -101,6 +101,39 @@ export interface Score {
     created_at: string;
 }
 
+export interface ActivityLog {
+    id: number;
+    user_id?: string;
+    action: string;
+    description: string;
+    metadata?: any;
+    created_at: string;
+}
+
+export interface JudgeActivityLog {
+    id: number;
+    judge_id: number;
+    category_id: number;
+    action: 'submit' | 'unlock' | 'score_change';
+    description?: string;
+    metadata?: {
+        participant_id?: number;
+        participant_name?: string;
+        old_score?: number;
+        new_score?: number;
+        old_rank?: number;
+        new_rank?: number;
+        category_name?: string;
+        tabular_type?: 'scoring' | 'ranking';
+        gender?: 'male' | 'female';
+        [key: string]: any;
+    };
+    created_at: string;
+    // Joined fields
+    judges?: Judge;
+    categories?: Category;
+}
+
 // ============================================================
 // UI/STATE TYPES
 // ============================================================
