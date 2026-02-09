@@ -41,17 +41,17 @@ const JudgeLayout = () => {
     }
 
     return (
-        <div className={`min-h-screen ${isDarkMode ? 'bg-gradient-to-br from-slate-900 via-primary-900 to-slate-900' : 'bg-white'}`}>
+        <div className={`min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-gradient-to-br from-slate-900 via-primary-900 to-slate-900' : 'bg-white'}`}>
             {/* Header */}
-            <header className={`fixed top-0 left-0 right-0 z-50 shadow-md ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border-b border-white/10' : 'bg-maroon'}`}>
+            <header className={`fixed top-0 left-0 right-0 z-50 shadow-md transition-colors duration-500 ${isDarkMode ? 'bg-white/10 backdrop-blur-lg border-b border-white/10' : 'bg-maroon'}`}>
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center gap-3">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md overflow-hidden ${isDarkMode ? 'bg-gradient-to-br from-primary-400 to-accent-500 text-white' : 'bg-white text-maroon'}`}>
                                 {judge.photo_url ? (
-                                    <img 
-                                        src={judge.photo_url} 
-                                        alt={judge.name} 
+                                    <img
+                                        src={judge.photo_url}
+                                        alt={judge.name}
                                         className="w-full h-full object-cover"
                                     />
                                 ) : (
