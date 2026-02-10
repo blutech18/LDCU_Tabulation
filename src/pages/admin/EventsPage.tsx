@@ -1308,6 +1308,17 @@ const TabularTab = ({ event }: { event: Event }) => {
         }
     };
 
+    const handleToggleComplete = async (category: Category) => {
+        const newValue = !category.is_completed;
+        const { error } = await supabase
+            .from('categories')
+            .update({ is_completed: newValue })
+            .eq('id', category.id);
+        if (!error) {
+            fetchCategories();
+        }
+    };
+
     const openEditModal = (category: Category) => {
         setEditingCategory(category);
         setCategoryName(category.name);
@@ -1413,13 +1424,37 @@ const TabularTab = ({ event }: { event: Event }) => {
                                         </div>
                                     </div>
 
-                                    {/* Bottom - Category Name */}
-                                    <div>
-                                        <h3 className="text-white font-bold text-lg leading-tight mb-2 drop-shadow-lg">
+                                    {/* Bottom - Category Name and Complete Badge */}
+                                    <div className="flex items-end justify-between">
+                                        <h3 className="text-white font-bold text-lg leading-tight drop-shadow-lg">
                                             {category.name}
                                         </h3>
+                                        {category.is_completed && (
+                                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-500 text-white flex items-center gap-1">
+                                                <FaCheck className="w-2.5 h-2.5" />
+                                                Completed
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Mark as Complete Button */}
+                            <div className="px-4 py-3 border-t border-gray-100">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleComplete(category);
+                                    }}
+                                    className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                                        category.is_completed
+                                            ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
+                                            : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                    }`}
+                                >
+                                    <FaCheck className={`w-3 h-3 ${category.is_completed ? 'text-green-600' : 'text-gray-400'}`} />
+                                    {category.is_completed ? 'Completed — Click to Reopen' : 'Mark as Complete'}
+                                </button>
                             </div>
                         </div>
                     ))}
@@ -4240,10 +4275,10 @@ const ScoresTab = ({ event }: { event: Event }) => {
     );
 };
 
-// Settings Tab Component
 const SettingsTab = ({ event, onEdit, onDelete, onEventUpdate }: { event: Event; onEdit: () => void; onDelete: () => void; onEventUpdate?: (updatedEvent: Event) => void }) => {
     const [auditorDetailedView, setAuditorDetailedView] = useState(event.auditor_detailed_view || false);
     const [topDisplayLimit, setTopDisplayLimit] = useState<number | null>(event.top_display_limit || null);
+    const [judgeDisplayLimit, setJudgeDisplayLimit] = useState<number | null>(event.judge_display_limit || null);
     const [saving, setSaving] = useState(false);
 
     const handleToggleAuditorDetailedView = async () => {
@@ -4277,6 +4312,24 @@ const SettingsTab = ({ event, onEdit, onDelete, onEventUpdate }: { event: Event;
             setTopDisplayLimit(newValue);
             if (onEventUpdate) {
                 onEventUpdate({ ...event, top_display_limit: newValue });
+            }
+        }
+        setSaving(false);
+    };
+
+    const handleJudgeDisplayLimitChange = async (value: string) => {
+        setSaving(true);
+        const newValue = value === '' ? null : Number(value);
+
+        const { error } = await supabase
+            .from('events')
+            .update({ judge_display_limit: newValue })
+            .eq('id', event.id);
+
+        if (!error) {
+            setJudgeDisplayLimit(newValue);
+            if (onEventUpdate) {
+                onEventUpdate({ ...event, judge_display_limit: newValue });
             }
         }
         setSaving(false);
@@ -4353,6 +4406,37 @@ const SettingsTab = ({ event, onEdit, onDelete, onEventUpdate }: { event: Event;
                         <select
                             value={topDisplayLimit === null ? '' : topDisplayLimit}
                             onChange={(e) => handleTopDisplayLimitChange(e.target.value)}
+                            disabled={saving}
+                            className={`px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-maroon focus:border-maroon ${saving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                            <option value="">Show All</option>
+                            <option value="3">Top 3</option>
+                            <option value="4">Top 4</option>
+                            <option value="5">Top 5</option>
+                            <option value="6">Top 6</option>
+                            <option value="7">Top 7</option>
+                            <option value="8">Top 8</option>
+                            <option value="9">Top 9</option>
+                            <option value="10">Top 10</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {/* Judge Settings */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Judge Settings</h3>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between py-3">
+                        <div>
+                            <p className="font-medium text-gray-900">Participant Display Limit</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Limit which participants judges can see and score. Only the top N participants by Final Rank (from average ranks across all categories) will be shown in the judge panel.
+                            </p>
+                        </div>
+                        <select
+                            value={judgeDisplayLimit === null ? '' : judgeDisplayLimit}
+                            onChange={(e) => handleJudgeDisplayLimitChange(e.target.value)}
                             disabled={saving}
                             className={`px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-maroon focus:border-maroon ${saving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                         >

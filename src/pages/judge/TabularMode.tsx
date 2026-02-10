@@ -5,7 +5,7 @@ import { FaChevronLeft, FaTable, FaTrophy, FaSync } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import ScoringTabular, { ScoringTabularRef } from '../../components/judge/ScoringTabular';
 import RankingTabular, { RankingTabularRef } from '../../components/judge/RankingTabular';
-import type { Judge, Category, Event } from '../../types';
+import type { Judge, Category, Event, Participant } from '../../types';
 
 interface JudgeContext {
     judge: Judge;
@@ -23,6 +23,7 @@ const TabularMode = () => {
     const [category, setCategory] = useState<CategoryWithEvent | null>(null);
     const [loading, setLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [allowedParticipantIds, setAllowedParticipantIds] = useState<number[] | null>(null);
     const scoringTabularRef = useRef<ScoringTabularRef>(null);
     const rankingTabularRef = useRef<RankingTabularRef>(null);
 
@@ -73,16 +74,226 @@ const TabularMode = () => {
           id,
           name,
           date,
-          participant_type
+          participant_type,
+          judge_display_limit
         )
       `)
             .eq('id', categoryId)
             .single();
 
         if (!error && data) {
-            setCategory(data as CategoryWithEvent);
+            const cat = data as CategoryWithEvent;
+            setCategory(cat);
+
+            // If judge_display_limit is set, calculate which participants are in top N
+            const limit = cat.events?.judge_display_limit;
+            if (limit && limit > 0) {
+                const topIds = await calculateTopParticipantIds(cat.events.id, limit, cat.events.participant_type);
+                setAllowedParticipantIds(topIds);
+            } else {
+                setAllowedParticipantIds(null);
+            }
         }
         setLoading(false);
+    };
+
+    // Calculate final rankings (same logic as AuditorResults) and return top N participant IDs
+    const calculateTopParticipantIds = async (
+        eventId: number,
+        limit: number,
+        _participantType: string
+    ): Promise<number[] | null> => {
+        try {
+            // Fetch all categories for this event (non-completed)
+            const { data: categoriesData } = await supabase
+                .from('categories')
+                .select('*')
+                .eq('event_id', eventId)
+                .order('display_order');
+            const allCategories = (categoriesData || []).filter((c: any) => !c.is_completed);
+            if (allCategories.length === 0) return null;
+
+            // Fetch judges
+            const { data: judgesData } = await supabase
+                .from('judges')
+                .select('*')
+                .eq('event_id', eventId)
+                .eq('is_active', true);
+            const allJudges = judgesData || [];
+            if (allJudges.length === 0) return null;
+
+            // Fetch participants
+            const { data: participantsData } = await supabase
+                .from('participants')
+                .select('*')
+                .eq('event_id', eventId)
+                .eq('is_active', true)
+                .order('display_order', { ascending: true, nullsFirst: false })
+                .order('number', { ascending: true });
+            const allParticipants = (participantsData || []) as Participant[];
+            if (allParticipants.length === 0) return null;
+
+            // Fetch all criteria grouped by category
+            const categoryIds = allCategories.map((c: any) => c.id);
+            const { data: criteriaData } = await supabase
+                .from('criteria')
+                .select('*')
+                .in('category_id', categoryIds)
+                .order('display_order');
+            const criteriaMap: Record<number, any[]> = {};
+            (criteriaData || []).forEach((c: any) => {
+                if (!criteriaMap[c.category_id]) criteriaMap[c.category_id] = [];
+                criteriaMap[c.category_id].push(c);
+            });
+
+            // Fetch all scores
+            const criteriaIds = (criteriaData || []).map((c: any) => c.id);
+            let allScores: any[] = [];
+            if (criteriaIds.length > 0) {
+                const { data: scoresData } = await supabase
+                    .from('scores')
+                    .select('*')
+                    .in('criteria_id', criteriaIds);
+                allScores = scoresData || [];
+            }
+
+            // For individual events, we need to calculate per gender
+            // But for the judge display limit, we calculate across all participants
+            // since the judge sees one gender at a time but the limit applies globally
+            const participantCategoryValues: Record<number, Record<number, number | null>> = {};
+            allParticipants.forEach((p) => {
+                participantCategoryValues[p.id] = {};
+            });
+
+            // Ranking-based mode calculation (same as AuditorResults default)
+            allCategories.forEach((category: any) => {
+                const criteria = criteriaMap[category.id] || [];
+                if (criteria.length === 0) return;
+
+                const isRankingBased = (category.tabular_type || '').toLowerCase() === 'ranking';
+
+                if (isRankingBased) {
+                    const participantRankData = allParticipants.map((participant) => {
+                        const firstCriteria = criteria[0];
+                        let totalRank = 0;
+                        let judgeCount = 0;
+                        allJudges.forEach((judge: any) => {
+                            const scoreEntry = allScores.find(
+                                (s) => s.judge_id === judge.id && s.participant_id === participant.id && s.criteria_id === firstCriteria.id
+                            );
+                            if (scoreEntry?.rank !== null && scoreEntry?.rank !== undefined) {
+                                totalRank += scoreEntry.rank;
+                                judgeCount++;
+                            }
+                        });
+                        const avgRank = judgeCount > 0 ? totalRank / judgeCount : null;
+                        return { participant, avgRank };
+                    });
+
+                    const sorted = [...participantRankData].sort((a, b) => {
+                        if (a.avgRank === null && b.avgRank === null) return 0;
+                        if (a.avgRank === null) return 1;
+                        if (b.avgRank === null) return -1;
+                        return a.avgRank - b.avgRank;
+                    });
+
+                    let currentRank = 0;
+                    let previousAvg: number | null = null;
+                    sorted.forEach((item) => {
+                        if (item.avgRank !== null) {
+                            if (item.avgRank !== previousAvg) currentRank++;
+                            participantCategoryValues[item.participant.id][category.id] = currentRank;
+                            previousAvg = item.avgRank;
+                        } else {
+                            participantCategoryValues[item.participant.id][category.id] = null;
+                        }
+                    });
+                } else {
+                    // Scoring-based: average total scores across judges, then rank
+                    const participantScoreData = allParticipants.map((participant) => {
+                        let totalSum = 0;
+                        let judgeCount = 0;
+                        allJudges.forEach((judge: any) => {
+                            let hasScore = false;
+                            let judgeTotal = 0;
+                            criteria.forEach((c: any) => {
+                                const score = allScores.find(
+                                    (s) => s.judge_id === judge.id && s.participant_id === participant.id && s.criteria_id === c.id
+                                );
+                                if (score && score.score > 0) {
+                                    hasScore = true;
+                                    judgeTotal += score.score;
+                                }
+                            });
+                            if (hasScore) {
+                                totalSum += judgeTotal;
+                                judgeCount++;
+                            }
+                        });
+                        const avgScore = judgeCount > 0 ? totalSum / judgeCount : null;
+                        return { participant, avgScore };
+                    });
+
+                    const sorted = [...participantScoreData].sort((a, b) => {
+                        if (a.avgScore === null && b.avgScore === null) return 0;
+                        if (a.avgScore === null) return 1;
+                        if (b.avgScore === null) return -1;
+                        return b.avgScore - a.avgScore; // higher score = better = lower rank
+                    });
+
+                    let currentRank = 0;
+                    let previousScore: number | null = null;
+                    sorted.forEach((item) => {
+                        if (item.avgScore !== null) {
+                            if (item.avgScore !== previousScore) currentRank++;
+                            participantCategoryValues[item.participant.id][category.id] = currentRank;
+                            previousScore = item.avgScore;
+                        } else {
+                            participantCategoryValues[item.participant.id][category.id] = null;
+                        }
+                    });
+                }
+            });
+
+            // Calculate average ranks across categories -> final rank
+            const participantResults = allParticipants.map((participant) => {
+                const categoryRanks = participantCategoryValues[participant.id];
+                const validRanks = Object.values(categoryRanks).filter((r): r is number => r !== null);
+                const sumRanks = validRanks.reduce((a, b) => a + b, 0);
+                const categoryCount = validRanks.length;
+                const avgRank = categoryCount > 0 ? sumRanks / categoryCount : null;
+                return { participant, avgRank };
+            });
+
+            const sorted = [...participantResults].sort((a, b) => {
+                if (a.avgRank === null && b.avgRank === null) return 0;
+                if (a.avgRank === null) return 1;
+                if (b.avgRank === null) return -1;
+                return a.avgRank - b.avgRank;
+            });
+
+            let currentRank = 0;
+            let previousAvg: number | null = null;
+            const ranked = sorted.map((item) => {
+                let finalRank: number | null = null;
+                if (item.avgRank !== null) {
+                    if (item.avgRank !== previousAvg) currentRank++;
+                    finalRank = currentRank;
+                    previousAvg = item.avgRank;
+                }
+                return { ...item, finalRank };
+            });
+
+            // Return IDs of participants within the top N (by final rank)
+            const topIds = ranked
+                .filter((item) => item.finalRank !== null && item.finalRank <= limit)
+                .map((item) => item.participant.id);
+
+            return topIds.length > 0 ? topIds : null;
+        } catch (err) {
+            console.error('Error calculating top participants:', err);
+            return null;
+        }
     };
 
     const handleBack = () => {
@@ -217,6 +428,7 @@ const TabularMode = () => {
                         onFinish={handleFinish}
                         isDarkMode={isDarkMode}
                         eventParticipantType={category.events.participant_type}
+                        allowedParticipantIds={allowedParticipantIds}
                     />
                 ) : (
                     <ScoringTabular
@@ -226,6 +438,7 @@ const TabularMode = () => {
                         onFinish={handleFinish}
                         isDarkMode={isDarkMode}
                         eventParticipantType={category.events.participant_type}
+                        allowedParticipantIds={allowedParticipantIds}
                     />
                 )}
             </motion.div>

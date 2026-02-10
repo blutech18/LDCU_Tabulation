@@ -12,6 +12,7 @@ interface ScoringTabularProps {
     eventParticipantType?: 'individual' | 'group';
     onSaveStateChange?: (isSaving: boolean) => void;
     onLockChange?: (isLocked: boolean) => void;
+    allowedParticipantIds?: number[] | null;
 }
 
 export interface ScoringTabularRef {
@@ -26,7 +27,7 @@ interface ScoreState {
     };
 }
 
-const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType, onSaveStateChange, onLockChange }, ref) => {
+const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType, onSaveStateChange, onLockChange, allowedParticipantIds }, ref) => {
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [scores, setScores] = useState<ScoreState>({});
@@ -198,6 +199,11 @@ const ScoringTabular = forwardRef<ScoringTabularRef, ScoringTabularProps>(({ cat
                 .eq('is_active', true)
                 .order('number');
             participantsList = (allParticipants || []) as Participant[];
+        }
+
+        // Filter by allowedParticipantIds if set (judge_display_limit)
+        if (allowedParticipantIds && allowedParticipantIds.length > 0) {
+            participantsList = participantsList.filter(p => allowedParticipantIds.includes(p.id));
         }
 
         setParticipants(participantsList);

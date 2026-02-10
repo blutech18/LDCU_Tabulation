@@ -22,6 +22,7 @@ export interface Event {
     status: 'draft' | 'ongoing' | 'completed';
     auditor_detailed_view?: boolean;
     top_display_limit?: number | null; // null or 0 = show all, 3-10 = show only top N results
+    judge_display_limit?: number | null; // null or 0 = show all, 3-10 = only show top N participants to judges
     created_at: string;
 }
 
@@ -35,6 +36,7 @@ export interface Category {
     photo_url?: string;
     display_order: number;
     top_display?: number | null;
+    is_completed?: boolean;
     created_at: string;
 }
 

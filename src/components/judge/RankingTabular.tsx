@@ -12,6 +12,7 @@ interface RankingTabularProps {
     eventParticipantType?: 'individual' | 'group';
     onSaveStateChange?: (isSaving: boolean) => void;
     onLockChange?: (isLocked: boolean) => void;
+    allowedParticipantIds?: number[] | null;
 }
 
 export interface RankingTabularRef {
@@ -23,7 +24,7 @@ interface RankedParticipant extends Participant {
     rank: number;
 }
 
-const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType, onSaveStateChange, onLockChange }, ref) => {
+const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ categoryId, judgeId, onFinish, isDarkMode, eventParticipantType, onSaveStateChange, onLockChange, allowedParticipantIds }, ref) => {
     const [contestants, setContestants] = useState<RankedParticipant[]>([]);
     const [criteria, setCriteria] = useState<Criteria[]>([]);
     const [loading, setLoading] = useState(true);
@@ -179,6 +180,11 @@ const RankingTabular = forwardRef<RankingTabularRef, RankingTabularProps>(({ cat
                 .eq('is_active', true)
                 .order('number');
             contestantsList = (allContestants || []) as Participant[];
+        }
+
+        // Filter by allowedParticipantIds if set (judge_display_limit)
+        if (allowedParticipantIds && allowedParticipantIds.length > 0) {
+            contestantsList = contestantsList.filter(p => allowedParticipantIds.includes(p.id));
         }
 
         // Fetch existing rankings from scores table

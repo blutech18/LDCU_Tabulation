@@ -161,6 +161,14 @@ const AuditorResults = () => {
     if (scoreBased) {
       // Score-based mode: each category value is the average total score across judges
       categories.forEach((category) => {
+        // Completed categories show as 0 (null) - data preserved in DB
+        if (category.is_completed) {
+          filteredParticipants.forEach((participant) => {
+            participantCategoryValues[participant.id][category.id] = null;
+          });
+          return;
+        }
+
         const criteria = criteriaMap[category.id] || [];
         if (criteria.length === 0) return;
 
@@ -249,6 +257,14 @@ const AuditorResults = () => {
 
     // Ranking-based mode (default)
     categories.forEach((category) => {
+      // Completed categories show as 0 (null) - data preserved in DB
+      if (category.is_completed) {
+        filteredParticipants.forEach((participant) => {
+          participantCategoryValues[participant.id][category.id] = null;
+        });
+        return;
+      }
+
       const criteria = criteriaMap[category.id] || [];
       if (criteria.length === 0) return;
 
@@ -864,12 +880,22 @@ const AuditorResults = () => {
                   </p>
                 </div>
                 {/* Ranking Based | Score Based Toggle */}
-                <div className="flex items-center bg-white/20 rounded-full p-0.5">
+                <div className="relative flex items-center bg-white/20 rounded-full p-0.5">
+                  <motion.div
+                    className="absolute top-0.5 bottom-0.5 rounded-full bg-white shadow-sm"
+                    initial={false}
+                    animate={{
+                      x: scoreBased ? "100%" : "0%",
+                      width: "50%",
+                    }}
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    style={{ left: 0 }}
+                  />
                   <button
                     onClick={() => setScoreBased(false)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                    className={`relative z-10 px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-200 ${
                       !scoreBased
-                        ? "bg-white text-maroon shadow-sm"
+                        ? "text-maroon"
                         : "text-white/80 hover:text-white"
                     }`}
                   >
@@ -877,9 +903,9 @@ const AuditorResults = () => {
                   </button>
                   <button
                     onClick={() => setScoreBased(true)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                    className={`relative z-10 px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-200 ${
                       scoreBased
-                        ? "bg-white text-maroon shadow-sm"
+                        ? "text-maroon"
                         : "text-white/80 hover:text-white"
                     }`}
                   >
