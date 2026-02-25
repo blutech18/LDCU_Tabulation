@@ -1012,17 +1012,17 @@ const AuditorResults = () => {
                               key={category.id}
                               className={`border px-4 py-3 text-center ${isDarkMode ? "border-white/10" : "border-gray-200"}`}
                             >
-                              {item.categoryRanks[category.id] != null ? (
+                              {item.categoryRanks[category.id] !== null ? (
                                 <span
                                   className={`font-medium ${isDarkMode ? "text-white" : "text-gray-900"}`}
                                 >
-                                  {(() => {
-                                    const val = item.categoryRanks[category.id];
-                                    if (scoreBased && typeof val === "number") {
-                                      return val.toFixed(2);
-                                    }
-                                    return val ?? "—";
-                                  })()}
+                                  {scoreBased
+                                    ? (
+                                        item.categoryRanks[
+                                          category.id
+                                        ] as number
+                                      ).toFixed(2)
+                                    : item.categoryRanks[category.id]}
                                 </span>
                               ) : (
                                 <span
